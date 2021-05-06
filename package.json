@@ -2,12 +2,19 @@
   "name": "tyger",
   "version": "1.0.0",
   "description": "A very flexible type system",
-  "main": "test/test.js",
+  "main": "test/test.ts",
   "scripts": {
-    "test": "mocha --color test/test.js"
+    "test": "tsc && mocha --color build/test.js || exit 1"
   },
   "watch": {
-    "test": "{src,test}/*.js"
+    "test": {
+      "patterns": ["src", "test", "node_modules", "package.json", "tsconfig.json"],
+      "extensions": "js,jsx,ts,tsx,json",
+      "quiet": true,
+      "legacyWatch": true,
+      "delay": 500,
+      "runOnChangeOnly": false
+    }
   },
   "keywords": [
     "types",
@@ -27,5 +34,9 @@
     "chai": "^4.3.4",
     "mocha": "^8.3.2",
     "npm-watch": "^0.9.0"
+  },
+  "dependencies": {
+    "@types/chai": "^4.2.17",
+    "@types/mocha": "^8.2.2"
   }
 }
