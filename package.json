@@ -1,0 +1,31 @@
+{
+  "name": "tyger",
+  "version": "1.0.0",
+  "description": "A very flexible type system",
+  "main": "test/test.js",
+  "scripts": {
+    "test": "mocha --color test/test.js"
+  },
+  "watch": {
+    "test": "{src,test}/*.js"
+  },
+  "keywords": [
+    "types",
+    "modelling",
+    "structural",
+    "nominal",
+    "duck",
+    "typing",
+    "interfaces",
+    "plugin",
+    "solver"
+  ],
+  "author": "J Pratt",
+  "license": "MIT",
+  "type": "module",
+  "devDependencies": {
+    "chai": "^4.3.4",
+    "mocha": "^8.3.2",
+    "npm-watch": "^0.9.0"
+  }
+}
