@@ -14,12 +14,12 @@ describe('type tests', () => {
   });
   it('constructs Intersection of Any and Never', () => {
     const anyAndNever = intersection(any(), never());
-    assert.equal(anyAndNever.toString(), '(Any&Never)');
+    assert.equal(anyAndNever.toString(), 'Never');
     assert.isTrue(anyAndNever.isNever());
   });
   it('constructs Intersection of Any and Any', () => {
     const anyAndAny = intersection(any(), any());
-    assert.equal(anyAndAny.toString(), '(Any&Any)');
+    assert.equal(anyAndAny.toString(), 'Any');
     assert.isFalse(anyAndAny.isNever());
   });
   it('constructs Open of Never', () => {
@@ -60,20 +60,56 @@ describe('type tests', () => {
     assert.isFalse(undefined_type().equals(null_type()), 'undefined != null');
     assert.isFalse(null_type().equals(undefined_type()), 'null != undefined');
   });
-  it('function type', () => {
-    const namedA = named('a', any());
-    const id = func(namedA, namedA);
-    assert.equal(id.toString(), 'a(Any)->a(Any)');
-    assert.isTrue(id.canAssignFrom(id), 'id function is assignable id function');
-    assert.isTrue(id.equals(id), 'id function equals id function');
+  describe('union type tests', () => {
+    it('a|b', () => {
+      const namedA = named('a', any()); // new type any as a
+      const namedB = named('b', any()); // new type any as b
+      const aOrB = union(namedA, namedB);
+
+      assert.isTrue(namedA.isSubType(aOrB), 'a is a subtype of a|b');
+      assert.isTrue(namedB.isSubType(aOrB), 'a is a subtype of a|b');
+      assert.isFalse(aOrB.isSubType(namedA), 'a|b is not a subtype of a');
+      assert.isFalse(aOrB.isSubType(namedB), 'a|b is not a subtype of b');
+
+      assert.isFalse(namedA.isSuperType(aOrB), 'a is not a supertype of a|b');
+      assert.isFalse(namedB.isSuperType(aOrB), 'a is not a supertype of a|b');
+      assert.isTrue(aOrB.isSuperType(namedA), 'a|b is a supertype of a');
+      assert.isTrue(aOrB.isSuperType(namedB), 'a|b is a supertype of b');
+    });
   });
-  it('non equal function types', () => {
-    const namedA = named('a', any());
-    const namedB = named('b', any());
-    const idA = func(namedA, namedA);
-    const idB = func(namedB, namedB);
-    assert.isFalse(idA.canAssignFrom(idB), 'non equal id functions !equals id function');
-    assert.isFalse(idB.canAssignFrom(idA), 'non equal id functions !equals id function');
-    assert.isFalse(idB.equals(idB), 'id function is assignable id function');
+  describe('function type tests', () => {
+    it('function type', () => {
+      const namedA = named('a', any());
+      const id = func(namedA, namedA);
+      assert.equal(id.toString(), 'a->a');
+      assert.isTrue(id.canAssignFrom(id), 'id function is assignable to an id function');
+      assert.isTrue(id.equals(id), 'id function equals id function');
+    });
+    it('non equal function types', () => {
+      const namedA = named('a', any());
+      const namedB = named('b', any());
+      const idA = func(namedA, namedA);
+      const idB = func(namedB, namedB);
+      assert.isFalse(idA.canAssignFrom(idB), 'non equal id functions !equals id function');
+      assert.isFalse(idB.canAssignFrom(idA), 'non equal id functions !equals id function');
+      assert.isFalse(idA.equals(idB), 'idA != idB');
+      assert.isFalse(idB.equals(idA), 'idB != idA');
+    });
+    it('sub typing function types', () => {
+      const namedA = named('a', any()); // new type any as a
+      const namedB = named('b', any()); // new type any as b
+      const aOrB = union(namedA, namedB);
+
+      const abstractingId = func(namedA, aOrB);
+      assert.equal(abstractingId.toString(), 'a->(a|b)');
+
+      const subtypingId = func(aOrB, namedA);
+      assert.equal(subtypingId.toString(), '(a|b)->a');
+
+      assert.isTrue(abstractingId.canAssignFrom(subtypingId), 'non equal id functions !equals id function');
+      assert.isFalse(subtypingId.canAssignFrom(abstractingId), 'non equal id functions !equals id function');
+      assert.isFalse(abstractingId.equals(subtypingId), 'abstractingId != subtypingId');
+      assert.isFalse(subtypingId.equals(abstractingId), 'subtypingId != abstractingId');
+    });
   });
 });

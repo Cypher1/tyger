@@ -2,19 +2,49 @@ type TypeSet = Set<Type>;
 
 export abstract class Type {
 
-  abstract toString(): string;
   abstract canAssignFromImpl(other: Type): boolean;
-  abstract isNever(): boolean;
+  abstract isAny(): boolean;
+  abstract toStringImpl(): string;
+
+  isNever(): boolean {
+    return false;
+  }
 
   canAssignFrom(other: Type): boolean {
     if (!(this instanceof Named) && other instanceof Named) {
       return this.canAssignFrom(other.type);
     }
+    if (other instanceof Union) {
+      for (var type of other.types) {
+        if (!this.canAssignFrom(type)) {
+          return false;
+        }
+      }
+      return true;
+    }
     return this.canAssignFromImpl(other);
+  }
+
+  isSuperType(other: Type): boolean {
+    return this.canAssignFrom(other);
+  }
+
+  isSubType(other: Type): boolean {
+    return other.canAssignFrom(this);
   }
 
   equals(other: Type): boolean {
     return this.canAssignFrom(other) && other.canAssignFrom(this);
+  }
+
+  toString(): string {
+    if (this.isAny()) {
+      return 'Any';
+    }
+    if (this.isNever()) {
+      return 'Never';
+    }
+    return this.toStringImpl();
   }
 }
 
@@ -23,10 +53,7 @@ export class Union extends Type {
     super();
   }
 
-  toString(): string {
-    if (this.isNever()) {
-      return `Never`;
-    }
+  toStringImpl(): string {
     const op = '|';
     const marker = (this.types.size === 1) ? op : '';
     return `(${marker}${[...this.types].map(x => x.toString()).join(op)})`;
@@ -49,6 +76,15 @@ export class Union extends Type {
     }
     return true;
   }
+
+  isAny(): boolean {
+    for (var type of this.types) {
+      if (type.isNever()) {
+        return true;
+      }
+    }
+    return false;
+  }
 }
 
 export class Intersection extends Type {
@@ -56,10 +92,7 @@ export class Intersection extends Type {
     super();
   }
 
-  toString(): string {
-    if (this.types.size === 0) {
-      return `Any`;
-    }
+  toStringImpl(): string {
     const op = '&';
     const marker = (this.types.size === 1) ? op : '';
     return `(${marker}${[...this.types].map(x => x.toString()).join(op)})`;
@@ -82,6 +115,15 @@ export class Intersection extends Type {
     }
     return false;
   }
+
+  isAny(): boolean {
+    for (var type of this.types) {
+      if (!type.isAny()) {
+        return false;
+      }
+    }
+    return true;
+  }
 }
 
 export class Open extends Type {
@@ -89,10 +131,7 @@ export class Open extends Type {
     super();
   }
 
-  toString(): string {
-    if (this.type.isNever()) {
-      return `Any`;
-    }
+  toStringImpl(): string {
     return `${this.type}+`;
   }
 
@@ -103,6 +142,10 @@ export class Open extends Type {
   isNever(): boolean {
     return false;
   }
+
+  isAny(): boolean {
+    return false;
+  }
 }
 
 export class Named extends Type {
@@ -111,6 +154,13 @@ export class Named extends Type {
   }
 
   toString(): string {
+    return this.toStringImpl();
+  }
+
+  toStringImpl(): string {
+    if (this.type.isAny()) {
+      return this.name;
+    }
     return `${this.name}(${this.type})`;
   }
 
@@ -124,6 +174,10 @@ export class Named extends Type {
   isNever(): boolean {
     return this.type.isNever();
   }
+
+  isAny(): boolean {
+    return false;
+  }
 }
 
 export class Product extends Type {
@@ -131,7 +185,7 @@ export class Product extends Type {
     super();
   }
 
-  toString(): string {
+  toStringImpl(): string {
     if (this.types.length === 0) {
       return `Unit`;
     }
@@ -162,6 +216,10 @@ export class Product extends Type {
     }
     return false;
   }
+
+  isAny(): boolean {
+    return false;
+  }
 }
 
 export class Func extends Type {
@@ -169,7 +227,7 @@ export class Func extends Type {
     super();
   }
 
-  toString(): string {
+  toStringImpl(): string {
     return `${this.argument}->${this.result}`;
   }
 
@@ -177,13 +235,12 @@ export class Func extends Type {
     if (other instanceof Func) {
       // a->b <: c->d iff (c <: a) and (d <: b)
       if (!other.argument.canAssignFromImpl(this.argument)) {
-        // No because the arguments cannot be assigned
-        return false;
+        return false; // the arguments cannot be assigned
       }
       if (!this.result.canAssignFromImpl(other.result)) {
-        // No because the results cannot be assigned
-        return false;
+        return false; // the results cannot be assigned
       }
+      return true;
     }
     return false;
   }
@@ -192,6 +249,10 @@ export class Func extends Type {
     if (this.result.isNever()) {
       return true;
     }
+    return false;
+  }
+
+  isAny(): boolean {
     return false;
   }
 }
