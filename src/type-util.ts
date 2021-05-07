@@ -1,4 +1,4 @@
-import {Type, Intersection, Union, Product, Named, Open} from './type.js';
+import {Type, Intersection, Union, Product, Named, Open, Func} from './type.js';
 
 export function intersection(...types: Type[]) {
   return new Intersection(new Set(types));
@@ -38,5 +38,9 @@ export function null_type(): Type {
 
 export function named(name: string, type: Type): Type {
   return new Named(name, type);
+}
+
+export function func(argument: Type, result: Type): Type {
+  return new Func(argument, result);
 }
 

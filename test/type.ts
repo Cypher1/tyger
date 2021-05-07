@@ -1,7 +1,7 @@
 import 'mocha';
 import {assert} from 'chai';
 
-import {never, unit, intersection, any, union, named, undefined_type, null_type} from '../src/type-util.js';
+import {never, unit, intersection, any, union, named, undefined_type, null_type, func} from '../src/type-util.js';
 
 describe('type tests', () => {
   it('constructs Never', () => {
@@ -59,5 +59,21 @@ describe('type tests', () => {
     assert.isFalse(null_type().canAssignFrom(undefined_type()), 'undefined cannot be assigned to null');
     assert.isFalse(undefined_type().equals(null_type()), 'undefined != null');
     assert.isFalse(null_type().equals(undefined_type()), 'null != undefined');
+  });
+  it('function type', () => {
+    const namedA = named('a', any());
+    const id = func(namedA, namedA);
+    assert.equal(id.toString(), 'a(Any)->a(Any)');
+    assert.isTrue(id.canAssignFrom(id), 'id function is assignable id function');
+    assert.isTrue(id.equals(id), 'id function equals id function');
+  });
+  it('non equal function types', () => {
+    const namedA = named('a', any());
+    const namedB = named('b', any());
+    const idA = func(namedA, namedA);
+    const idB = func(namedB, namedB);
+    assert.isFalse(idA.canAssignFrom(idB), 'non equal id functions !equals id function');
+    assert.isFalse(idB.canAssignFrom(idA), 'non equal id functions !equals id function');
+    assert.isFalse(idB.equals(idB), 'id function is assignable id function');
   });
 });

@@ -163,3 +163,35 @@ export class Product extends Type {
     return false;
   }
 }
+
+export class Func extends Type {
+  constructor(public argument: Type, public result: Type) {
+    super();
+  }
+
+  toString(): string {
+    return `${this.argument}->${this.result}`;
+  }
+
+  canAssignFromImpl(other: Type): boolean {
+    if (other instanceof Func) {
+      // a->b <: c->d iff (c <: a) and (d <: b)
+      if (!other.argument.canAssignFromImpl(this.argument)) {
+        // No because the arguments cannot be assigned
+        return false;
+      }
+      if (!this.result.canAssignFromImpl(other.result)) {
+        // No because the results cannot be assigned
+        return false;
+      }
+    }
+    return false;
+  }
+
+  isNever(): boolean {
+    if (this.result.isNever()) {
+      return true;
+    }
+    return false;
+  }
+}

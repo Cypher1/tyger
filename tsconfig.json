@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "outDir": "./build",
+    "sourceMap": true,
     "allowJs": false,
     "target": "es6"
   },
