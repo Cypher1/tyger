@@ -4,7 +4,7 @@
   "description": "A very flexible type system",
   "main": "test/test.ts",
   "scripts": {
-    "test": "clear && tsc && mocha --color build/test.js || exit 1"
+    "test": "clear && tsc && mocha --color build/test/**/*.js || exit 1"
   },
   "watch": {
     "test": {
