@@ -22,7 +22,7 @@ describe('type tests', () => {
     assert.equal(anyAndAny.toString(), 'Any');
     assert.isFalse(anyAndAny.isNever());
   });
-  it('constructs Open of Never', () => {
+  it('constructs Any', () => {
     assert.equal(any().toString(), 'Any');
     assert.isFalse(any().isNever());
   });
@@ -42,7 +42,7 @@ describe('type tests', () => {
     assert.equal(undefined_type().toString(), 'undefined(Unit)');
     assert.isFalse(undefined_type().isNever());
     assert.isFalse(undefined_type().canAssignFrom(unit()), 'unit is not undefined');
-    assert.isTrue(unit().canAssignFrom(undefined_type()), 'undefined is a unit');
+    assert.isFalse(unit().canAssignFrom(undefined_type()), 'undefined is not just a unit');
     assert.isTrue(undefined_type().equals(undefined_type()), 'undefined is a undefined');
     assert.isTrue(undefined_type().canAssignFrom(undefined_type()), 'undefined is assignable to undefined');
   });
@@ -50,7 +50,7 @@ describe('type tests', () => {
     assert.equal(null_type().toString(), 'null(Unit)');
     assert.isFalse(null_type().isNever());
     assert.isFalse(null_type().canAssignFrom(unit()), 'unit is not null');
-    assert.isTrue(unit().canAssignFrom(null_type()), 'null is a unit');
+    assert.isFalse(unit().canAssignFrom(null_type()), 'null is not just a unit');
     assert.isTrue(null_type().equals(null_type()), 'null is a null');
     assert.isTrue(null_type().canAssignFrom(null_type()), 'null is assignable to null');
   });

@@ -11,9 +11,6 @@ export abstract class Type {
   }
 
   canAssignFrom(other: Type): boolean {
-    if (!(this instanceof Named) && other instanceof Named) {
-      return this.canAssignFrom(other.type);
-    }
     if (other instanceof Union) {
       for (var type of other.types) {
         if (!this.canAssignFrom(type)) {
