@@ -39,7 +39,7 @@ describe('type tests', () => {
     assert.isTrue(impossible.isNever());
   });
   it('undefined type', () => {
-    assert.equal(undefined_type().toString(), 'undefined(Unit)');
+    assert.equal(undefined_type().toString(), 'undefined()');
     assert.isFalse(undefined_type().isNever());
     assert.isFalse(undefined_type().canAssignFrom(unit()), 'unit is not undefined');
     assert.isFalse(unit().canAssignFrom(undefined_type()), 'undefined is not just a unit');
@@ -47,7 +47,7 @@ describe('type tests', () => {
     assert.isTrue(undefined_type().canAssignFrom(undefined_type()), 'undefined is assignable to undefined');
   });
   it('null type', () => {
-    assert.equal(null_type().toString(), 'null(Unit)');
+    assert.equal(null_type().toString(), 'null()');
     assert.isFalse(null_type().isNever());
     assert.isFalse(null_type().canAssignFrom(unit()), 'unit is not null');
     assert.isFalse(unit().canAssignFrom(null_type()), 'null is not just a unit');

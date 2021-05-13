@@ -1,3 +1,5 @@
+import {unit} from './type-util.js';
+
 type TypeSet = Set<Type>;
 
 export abstract class Type {
@@ -157,6 +159,9 @@ export class Named extends Type {
   toStringImpl(): string {
     if (this.type.isAny()) {
       return this.name;
+    }
+    if (this.type.equals(unit())) {
+      return `${this.name}()`;
     }
     return `${this.name}(${this.type})`;
   }
