@@ -4,7 +4,8 @@
   "description": "A very flexible type system",
   "main": "test/test.ts",
   "scripts": {
-    "test": "clear && tsc && mocha -r source-map-support/register --color build/test/**/*.js || exit 1"
+    "test": "tsc && mocha -r source-map-support/register --color build/test/**/*.js",
+    "watch": "npm-watch"
   },
   "watch": {
     "test": {
@@ -17,6 +18,7 @@
       ],
       "extensions": "js,jsx,ts,tsx,json",
       "quiet": true,
+      "clearBuffer": true,
       "legacyWatch": true,
       "delay": 500,
       "runOnChangeOnly": false
