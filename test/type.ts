@@ -1,7 +1,7 @@
 import 'mocha';
 import {assert} from 'chai';
 
-import {never, unit, intersection, any, union, named, undefined_type, null_type, func} from '../src/type-util.js';
+import {never, unit, intersection, any, union, named, undefined_type, null_type, func, app} from '../src/type-util.js';
 
 describe('type tests', () => {
   it('constructs Never', () => {
@@ -122,6 +122,28 @@ describe('type tests', () => {
       assert.isFalse(subtypingId.canAssignFrom(abstractingId), 'non equal id functions !equals id function');
       assert.isFalse(abstractingId.equals(subtypingId), 'abstractingId != subtypingId');
       assert.isFalse(subtypingId.equals(abstractingId), 'subtypingId != abstractingId');
+    });
+    describe('function application', () => {
+      const inner_tys = () => {
+        const obj = tys();
+        const dropF = func(obj.namedB, func(obj.namedA, obj.namedA));
+        return {dropF, ...obj};
+      };
+      it('apply on functions', () => {
+        const {namedA, namedB, idA, dropF} = inner_tys();
+
+        const dropFAppd = app(dropF, namedB);
+        const dropFMissAppd = app(dropF, namedA);
+
+        assert.equal(dropF.toString(), 'b->a->a');
+        assert.equal(dropFAppd.toString(), '(b->a->a)(b)');
+
+        assert.isTrue(idA.equals(dropFAppd), '(1) applying an argument produces the inner');
+        assert.isTrue(dropFAppd.equals(idA), '(2) applying an argument produces the inner');
+        assert.isTrue(dropFMissAppd.equals(never()), 'applying a non-matching argument produces never');
+        assert.isFalse(dropFAppd.isNever(), 'simplifying a valid type is not never');
+        assert.isTrue(dropFMissAppd.isNever(), 'simplifying an invalid type is never');
+      });
     });
   });
 });

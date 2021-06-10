@@ -12,16 +12,32 @@ export abstract class Type {
     return false;
   }
 
+  simplify(): Type {
+    if (this instanceof App) {
+      if (this.inner instanceof Func) {
+        if (this.inner.argument.canAssignFrom(this.argument)) {
+          return this.inner.result;
+        } else {
+          return new Union(new Set());
+        }
+      }
+    }
+    return this;
+  }
+
   canAssignFrom(other: Type): boolean {
-    if (other instanceof Union) {
-      for (var type of other.types) {
-        if (!this.canAssignFrom(type)) {
+    const otherSimple = other.simplify();
+    const thisSimple = this.simplify();
+    if (otherSimple instanceof Union) {
+      for (var type of otherSimple.types) {
+        if (!thisSimple.canAssignFrom(type)) {
           return false;
         }
       }
       return true;
     }
-    return this.canAssignFromImpl(other);
+
+    return thisSimple.canAssignFromImpl(otherSimple);
   }
 
   isSuperType(other: Type): boolean {
@@ -252,6 +268,42 @@ export class Func extends Type {
       return true;
     }
     return false;
+  }
+
+  isAny(): boolean {
+    return false;
+  }
+}
+
+export class App extends Type {
+  constructor(public inner: Type, public argument: Type) {
+    super();
+  }
+
+  toStringImpl(): string {
+    return `(${this.inner})(${this.argument})`;
+  }
+
+  canAssignFromImpl(other: Type): boolean {
+    if (other instanceof App) {
+      // a->b <: c->d iff (c <: a) and (d <: b)
+      if (!other.argument.canAssignFromImpl(this.argument)) {
+        return false; // the arguments cannot be assigned
+      }
+      if (!this.inner.canAssignFromImpl(other.inner)) {
+        return false; // the results cannot be assigned
+      }
+      return true;
+    }
+    return false;
+  }
+
+  isNever(): boolean {
+    const thisSimple = this.simplify();
+    if (thisSimple instanceof App) {
+      return thisSimple.argument.isNever() || thisSimple.inner.isNever();
+    }
+    return thisSimple.isNever();
   }
 
   isAny(): boolean {
