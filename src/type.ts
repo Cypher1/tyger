@@ -33,19 +33,19 @@ export abstract class Type {
     return this.isNeverImpl(context);
   }
 
-  simplify(context: Context, depth: number=0): Type {
-    //console.log('  '.repeat(depth), 'simplify ', this.toStringImpl([]));
+  eval(context: Context, depth: number=0): Type {
+    //console.log('  '.repeat(depth), 'eval ', this.toStringImpl([]));
     //console.log('  '.repeat(depth), context);
-    const res = this.simplifyImpl(context, depth);
+    const res = this.evalImpl(context, depth);
     //console.log('  '.repeat(depth), res.toStringImpl([]));
     return res;
   }
 
-  simplifyImpl(context: Context, depth: number): Type {
+  evalImpl(context: Context, depth: number): Type {
     if (this instanceof App) {
-      const arg = this.argument.simplify(context, depth+1);
+      const arg = this.argument.eval(context, depth+1);
       const newContext = extend(context, arg);
-      const inner = this.inner.simplify(newContext, depth+1);
+      const inner = this.inner.eval(newContext, depth+1);
       if (inner instanceof Func) {
         // Typed beta reduction
         if (inner.argument.canAssignFromImpl(arg, newContext)) {
@@ -57,7 +57,7 @@ export abstract class Type {
       return new App(inner, arg);
     }
     if (this instanceof Func) {
-      return new Func(this.argument.simplify(context, depth+1), this.result.simplify(context, depth+1));
+      return new Func(this.argument.eval(context, depth+1), this.result.eval(context, depth+1));
     }
     if (this instanceof Var) {
       const val = getTypeFrom(context, this);
@@ -67,8 +67,8 @@ export abstract class Type {
   }
 
   canAssignFrom(other: Type, context: Context = defaultContext()): boolean {
-    const otherSimple = other.simplify(context);
-    const thisSimple = this.simplify(context);
+    const otherSimple = other.eval(context);
+    const thisSimple = this.eval(context);
     if (otherSimple instanceof Union) {
       for (var type of otherSimple.types) {
         if (!thisSimple.canAssignFrom(type, context)) {
@@ -387,7 +387,7 @@ export class App extends Type {
   }
 
   isNeverImpl(context: Context): boolean {
-    const thisSimple = this.simplify(context);
+    const thisSimple = this.eval(context);
     if (thisSimple instanceof App) {
       return thisSimple.argument.isNeverImpl(context) || thisSimple.inner.isNeverImpl(context);
     }
@@ -395,7 +395,7 @@ export class App extends Type {
   }
 
   isAnyImpl(context: Context): boolean {
-    const thisSimple = this.simplify(context);
+    const thisSimple = this.eval(context);
     if (thisSimple instanceof App) {
       return false;
     }

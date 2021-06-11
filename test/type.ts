@@ -138,12 +138,12 @@ describe('type tests', () => {
         assert.equal(dropF.toString(), 'b->a->a');
         assert.equal(dropFAppd.toString(), '(b->a->a)(b)');
 
-        assert.equal(dropFAppd.simplify([]).toString(), 'a->a');
+        assert.equal(dropFAppd.eval([]).toString(), 'a->a');
         assert.isTrue(idA.equals(dropFAppd), '(1) applying an argument produces the inner');
         assert.isTrue(dropFAppd.equals(idA), '(2) applying an argument produces the inner');
         assert.isTrue(dropFMissAppd.equals(never()), 'applying a non-matching argument produces never');
-        assert.isFalse(dropFAppd.isNever(), 'simplifying a valid type is not never');
-        assert.isTrue(dropFMissAppd.isNever(), 'simplifying an invalid type is never');
+        assert.isFalse(dropFAppd.isNever(), 'evaling a valid type is not never');
+        assert.isTrue(dropFMissAppd.isNever(), 'evaling an invalid type is never');
       });
     });
     describe('variables as types', () => {
@@ -152,8 +152,8 @@ describe('type tests', () => {
         const right = varT(4, 'right');
         assert.equal(left.toString(), '$3#left');
         assert.equal(right.toString(), '$4#right');
-        assert.equal(left.simplify([]).toString(), '$3#left');
-        assert.equal(right.simplify([]).toString(), '$4#right');
+        assert.equal(left.eval([]).toString(), '$3#left');
+        assert.equal(right.eval([]).toString(), '$4#right');
         assert.isTrue(left.canAssignFrom(left), 'can assign left to left');
         assert.isTrue(right.canAssignFrom(right), 'can assign right to right');
         assert.isFalse(left.canAssignFrom(right), 'cannot assign right to left');
@@ -168,7 +168,7 @@ describe('type tests', () => {
         assert.equal(t.toString(), 'Any->Any->$0#t');
         const ifLeft = app(app(t, left), right);
         assert.equal(ifLeft.toString(), '((Any->Any->$0#t)($3#left))($4#right)');
-        assert.equal(ifLeft.simplify([]).toString(), '$3#left');
+        assert.equal(ifLeft.eval([]).toString(), '$3#left');
         assert.isTrue(ifLeft.canAssignFrom(left));
         assert.isFalse(ifLeft.canAssignFrom(right));
       });
@@ -179,7 +179,7 @@ describe('type tests', () => {
         assert.equal(f.toString(), 'Any->Any->$1#f');
         const ifRight = app(app(f, left), right);
         assert.equal(ifRight.toString(), '((Any->Any->$1#f)($3#left))($4#right)');
-        assert.equal(ifRight.simplify([]).toString(), '$4#right');
+        assert.equal(ifRight.eval([]).toString(), '$4#right');
         assert.isTrue(ifRight.canAssignFrom(right));
         assert.isFalse(ifRight.canAssignFrom(left));
       });
