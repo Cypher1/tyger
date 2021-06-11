@@ -8,6 +8,14 @@ export function withArgs(inner: Type, ...types: Type[]): Type {
   return curr;
 }
 
+export function churchBool(b: boolean): Type {
+  if (b) {
+    return churchT();
+  } else {
+    return churchF();
+  }
+}
+
 export function churchT(): Type {
   return withArgs(new Var(1, 't'), any(), any());
 }
@@ -33,6 +41,14 @@ export function churchPlus(): Type {
   const f = new Var(1, 'f');
   const x = new Var(0, 'x');
   return withArgs(app(app(n, f), app(app(m, f), x)), any(), any(), any(), any());
+}
+
+export function churchAnd(): Type {
+  const a = new Var(3, 'a');
+  const b = new Var(2, 'b');
+  const t = new Var(1, 't');
+  const f = new Var(0, 'f');
+  return withArgs(app(app(a, app(app(b, t), f)), f), any(), any(), any(), any());
 }
 
 // export function all(...conds: Type[]): Type {
