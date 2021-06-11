@@ -1,7 +1,8 @@
 import 'mocha';
 import {assert} from 'chai';
 
-import {never, unit, intersection, any, union, named, undefined_type, null_type, func, app, churchT, churchF, churchNat, varT} from '../src/type-util.js';
+import {never, unit, intersection, any, union, named, undefined_type, null_type, func, app, applyAll,
+  churchT, churchF, churchNat, churchPlus, varT} from '../src/type-util.js';
 
 describe('type tests', () => {
   it('constructs Never', () => {
@@ -190,7 +191,7 @@ describe('type tests', () => {
         assert.equal(n.toString(), 'Any->Any->$0#x');
         const startV = varT(3, 'start');
         const f = varT(4, 'fun');
-        const fNTimes = app(app(n, f), startV);
+        const fNTimes = applyAll(n, f, startV);
         assert.equal(fNTimes.toString(), '((Any->Any->$0#x)($4#fun))($3#start)');
         assert.equal(fNTimes.eval().toString(), '$3#start');
       });
@@ -199,7 +200,7 @@ describe('type tests', () => {
         assert.equal(n.toString(), 'Any->Any->($1#f)($0#x)');
         const startV = varT(3, 'start');
         const f = varT(4, 'fun');
-        const fNTimes = app(app(n, f), startV);
+        const fNTimes = applyAll(n, f, startV);
         assert.equal(fNTimes.toString(), '((Any->Any->($1#f)($0#x))($4#fun))($3#start)');
         assert.equal(fNTimes.eval().toString(), '($4#fun)($3#start)');
       });
@@ -208,7 +209,7 @@ describe('type tests', () => {
         assert.equal(n.toString(), 'Any->Any->($1#f)(($1#f)($0#x))');
         const startV = varT(3, 'start');
         const f = varT(4, 'fun');
-        const fNTimes = app(app(n, f), startV);
+        const fNTimes = applyAll(n, f, startV);
         assert.equal(fNTimes.toString(), '((Any->Any->($1#f)(($1#f)($0#x)))($4#fun))($3#start)');
         assert.equal(fNTimes.eval().toString(), '($4#fun)(($4#fun)($3#start))');
       });
@@ -217,9 +218,20 @@ describe('type tests', () => {
         assert.equal(n.toString(), 'Any->Any->($1#f)(($1#f)(($1#f)($0#x)))');
         const startV = varT(3, 'start');
         const f = varT(4, 'fun');
-        const fNTimes = app(app(n, f), startV);
+        const fNTimes = applyAll(n, f, startV);
         assert.equal(fNTimes.toString(), '((Any->Any->($1#f)(($1#f)(($1#f)($0#x))))($4#fun))($3#start)');
         assert.equal(fNTimes.eval().toString(), '($4#fun)(($4#fun)(($4#fun)($3#start)))');
+      });
+      it('plus', () => {
+        const plus = churchPlus();
+        const three = churchNat(3);
+        const four = churchNat(4);
+        const startV = varT(10, 'start');
+        const f = varT(11, 'fun');
+        const res = applyAll(plus, three, four, f, startV).eval();
+        const sevenApp = applyAll(churchNat(7), f, startV).eval();
+        assert.equal(res.toString(), sevenApp.toString(), 'String equality');
+        assert.isTrue(res.equals(sevenApp), 'Structural equality');
       });
     });
   });

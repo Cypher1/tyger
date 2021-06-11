@@ -20,7 +20,7 @@ export abstract class Type {
       }
     } else if (this instanceof Func) {
       const result = this.result.shift(delta, cutoff+1);
-      const argument = this.argument.shift(delta, cutoff);
+      const argument = this.argument.shift(delta, cutoff+1);
       return new Func(argument, result);
     } else if (this instanceof App) {
       const inner = this.inner.shift(delta, cutoff);
@@ -70,14 +70,15 @@ export abstract class Type {
   evalImpl(depth: number): Type {
     if (this instanceof App) {
       const inner = this.inner.eval(depth+1);
+      const argument = this.argument.eval(depth+1);
       if (inner instanceof Func) {
-        if (inner.argument.canAssignFromImpl(this.argument, depth+1)) {
-          return inner.result.subst(0, this.argument.shift(1)).shift(-1).eval(depth+1);
+        if (inner.argument.canAssignFromImpl(argument, depth+1)) {
+          return inner.result.subst(0, argument.shift(1)).shift(-1).eval(depth+1);
         } else {
           return new Union(new Set());
         }
       }
-      return new App(this.inner, this.argument);
+      return new App(inner, argument);
     }
     if (this instanceof Func) {
       return new Func(this.argument.eval(depth+1), this.result.eval(depth+1));
