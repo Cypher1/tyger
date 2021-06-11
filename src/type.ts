@@ -2,34 +2,71 @@ import {unit} from './type-util.js';
 
 type TypeSet = Set<Type>;
 
+type Context = Type[];
+
+function defaultContext(): Context {
+  return [];
+}
+
+function extend(curr: Context, t: Type): Context {
+  return [...curr, t];
+}
+
+function getTypeFrom(curr: Context, v: Var): Type {
+  if (v.index < curr.length) {
+    return curr[curr.length-1-v.index];
+  }
+  return null;
+}
+
 export abstract class Type {
 
-  abstract canAssignFromImpl(other: Type, context: Type[]): boolean;
-  abstract isAnyImpl(context: Type[]): boolean;
-  abstract isNeverImpl(context: Type[]): boolean;
-  abstract toStringImpl(context: Type[]): string;
+  abstract canAssignFromImpl(other: Type, context: Context): boolean;
+  abstract isAnyImpl(context: Context): boolean;
+  abstract isNeverImpl(context: Context): boolean;
+  abstract toStringImpl(context: Context): string;
 
-  isAny(context: Type[] = []): boolean {
+  isAny(context: Context = defaultContext()): boolean {
     return this.isAnyImpl(context);
   }
-  isNever(context: Type[] = []): boolean {
+  isNever(context: Context = defaultContext()): boolean {
     return this.isNeverImpl(context);
   }
 
-  simplify(context: Type[]): Type {
+  simplify(context: Context, depth: number=0): Type {
+    //console.log('  '.repeat(depth), 'simplify ', this.toStringImpl([]));
+    //console.log('  '.repeat(depth), context);
+    const res = this.simplifyImpl(context, depth);
+    //console.log('  '.repeat(depth), res.toStringImpl([]));
+    return res;
+  }
+
+  simplifyImpl(context: Context, depth: number): Type {
     if (this instanceof App) {
-      if (this.inner instanceof Func) {
-        if (this.inner.argument.canAssignFromImpl(this.argument, context)) {
-          return this.inner.result;
+      const arg = this.argument.simplify(context, depth+1);
+      const newContext = extend(context, arg);
+      const inner = this.inner.simplify(newContext, depth+1);
+      if (inner instanceof Func) {
+        // Typed beta reduction
+        if (inner.argument.canAssignFromImpl(arg, newContext)) {
+          return inner.result;
         } else {
           return new Union(new Set());
         }
       }
+      return new App(inner, arg);
+    }
+    if (this instanceof Func) {
+      return new Func(this.argument.simplify(context, depth+1), this.result.simplify(context, depth+1));
+    }
+    if (this instanceof Var) {
+      const val = getTypeFrom(context, this);
+      return val ? val : this;
     }
     return this;
   }
 
-  canAssignFrom(other: Type, context: Type[] = []): boolean {
+  canAssignFrom(other: Type, context: Context = defaultContext()): boolean {
     const otherSimple = other.simplify(context);
     const thisSimple = this.simplify(context);
     if (otherSimple instanceof Union) {
@@ -44,26 +81,26 @@ export abstract class Type {
     return thisSimple.canAssignFromImpl(otherSimple, context);
   }
 
-  isSuperType(other: Type, context: Type[] = []): boolean {
+  isSuperType(other: Type, context: Context = defaultContext()): boolean {
     return this.canAssignFrom(other, context);
   }
 
-  isSubType(other: Type, context: Type[] = []): boolean {
+  isSubType(other: Type, context: Context = defaultContext()): boolean {
     return other.canAssignFrom(this, context);
   }
 
-  equals(other: Type, context: Type[] = []): boolean {
+  equals(other: Type, context: Context = defaultContext()): boolean {
     return this.canAssignFrom(other, context) && other.canAssignFrom(this, context);
   }
 
-  toString(context: Type[] = []): string {
-    if (this.isAnyImpl(context)) {
+  toString(): string {
+    if (this.isAnyImpl([])) {
       return 'Any';
     }
-    if (this.isNeverImpl(context)) {
+    if (this.isNeverImpl([])) {
       return 'Never';
     }
-    return this.toStringImpl(context);
+    return this.toStringImpl([]);
   }
 }
 
@@ -77,15 +114,15 @@ export class Any extends Type {
     return '*';
   }
 
-  canAssignFromImpl(other: Type, context: Type[]): boolean {
+  canAssignFromImpl(other: Type, context: Context): boolean {
     return !other.isNeverImpl(context);
   }
 
-  isNeverImpl(_context: Type[]): boolean {
+  isNeverImpl(_context: Context): boolean {
     return false;
   }
 
-  isAnyImpl(_context: Type[]): boolean {
+  isAnyImpl(_context: Context): boolean {
     return true;
   }
 }
@@ -103,15 +140,15 @@ export class Refined extends Type {
     return `{${this.base}|${this.expr}}`;
   }
 
-  canAssignFromImpl(other: Type, context: Type[]): boolean {
+  canAssignFromImpl(other: Type, context: Context): boolean {
     return !other.isNeverImpl(context);
   }
 
-  isNeverImpl(context: Type[]): boolean {
+  isNeverImpl(context: Context): boolean {
     return this.base.isNeverImpl(context) || this.expr.isNeverImpl(context);
   }
 
-  isAnyImpl(context: Type[]): boolean {
+  isAnyImpl(context: Context): boolean {
     return this.base.isAnyImpl(context) && this.expr.isAnyImpl(context);
   }
 }
@@ -127,7 +164,7 @@ export class Union extends Type {
     return `(${marker}${[...this.types].map(x => x.toString()).join(op)})`;
   }
 
-  canAssignFromImpl(other: Type, context: Type[]): boolean {
+  canAssignFromImpl(other: Type, context: Context): boolean {
     for (var type of this.types) {
       if (type.canAssignFrom(other, context)) {
         return true; // `other` can be stored in `type`
@@ -136,7 +173,7 @@ export class Union extends Type {
     return false;
   }
 
-  isNeverImpl(context: Type[]): boolean {
+  isNeverImpl(context: Context): boolean {
     for (var type of this.types) {
       if (!type.isNeverImpl(context)) {
         return false;
@@ -145,7 +182,7 @@ export class Union extends Type {
     return true;
   }
 
-  isAnyImpl(context: Type[]): boolean {
+  isAnyImpl(context: Context): boolean {
     for (var type of this.types) {
       if (type.isNeverImpl(context)) {
         return true;
@@ -166,7 +203,7 @@ export class Intersection extends Type {
     return `(${marker}${[...this.types].map(x => x.toString()).join(op)})`;
   }
 
-  canAssignFromImpl(other: Type, context: Type[]): boolean {
+  canAssignFromImpl(other: Type, context: Context): boolean {
     for (var type of this.types) {
       if (!type.canAssignFrom(other, context)) {
         return false; // other must match all requirements
@@ -175,7 +212,7 @@ export class Intersection extends Type {
     return true;
   }
 
-  isNeverImpl(context: Type[]): boolean {
+  isNeverImpl(context: Context): boolean {
     for (var type of this.types) {
       if (type.isNeverImpl(context)) {
         return true;
@@ -184,7 +221,7 @@ export class Intersection extends Type {
     return false;
   }
 
-  isAnyImpl(context: Type[]): boolean {
+  isAnyImpl(context: Context): boolean {
     for (var type of this.types) {
       if (!type.isAnyImpl(context)) {
         return false;
@@ -199,11 +236,7 @@ export class Named extends Type {
     super();
   }
 
-  toString(context: Type[] = []): string {
-    return this.toStringImpl(context);
-  }
-
-  toStringImpl(context: Type[]): string {
+  toStringImpl(context: Context): string {
     if (this.type.isAnyImpl(context)) {
       return this.name;
     }
@@ -213,24 +246,24 @@ export class Named extends Type {
     return `${this.name}(${this.type})`;
   }
 
-  canAssignFromImpl(other: Type, context: Type[]): boolean {
+  canAssignFromImpl(other: Type, context: Context): boolean {
     if (other instanceof Named && other.name === this.name) {
       return this.type.canAssignFrom(other.type, context);
     }
     return false;
   }
 
-  isNeverImpl(context: Type[]): boolean {
+  isNeverImpl(context: Context): boolean {
     return this.type.isNeverImpl(context);
   }
 
-  isAnyImpl(_context: Type[]): boolean {
+  isAnyImpl(_context: Context): boolean {
     return false;
   }
 }
 
 export class Product extends Type {
-  constructor(public types: Type[]) {
+  constructor(public types: Context) {
     super();
   }
 
@@ -241,7 +274,7 @@ export class Product extends Type {
     return `(${this.types.map(x => x.toString()).join('*')})`;
   }
 
-  canAssignFromImpl(other: Type, context: Type[]): boolean {
+  canAssignFromImpl(other: Type, context: Context): boolean {
     if (other instanceof Product) {
       if (this.types.length === other.types.length) {
         for (var ind in this.types) {
@@ -257,7 +290,7 @@ export class Product extends Type {
     return false;
   }
 
-  isNeverImpl(context: Type[]): boolean {
+  isNeverImpl(context: Context): boolean {
     for (var type of this.types) {
       if (type.isNeverImpl(context)) {
         return true;
@@ -266,7 +299,7 @@ export class Product extends Type {
     return false;
   }
 
-  isAnyImpl(_context: Type[]): boolean {
+  isAnyImpl(_context: Context): boolean {
     return false;
   }
 }
@@ -278,18 +311,19 @@ export class Var extends Type {
   }
 
   toStringImpl(): string {
-    return `$${this.name ? `${this.name}[${this.index}]` : this.index}`;
+    return `$${this.index}${this.name ? `#${this.name}` : ``}`;
   }
 
-  canAssignFromImpl(_other: Type, _context: Type[]): boolean {
+  canAssignFromImpl(other: Type, _context: Context): boolean {
+    // All we know is that we can assign if they are the same variable
+    return (other instanceof Var && this.index == other.index);
+  }
+
+  isNeverImpl(_context: Context): boolean {
     return false;
   }
 
-  isNeverImpl(_context: Type[]): boolean {
-    return false;
-  }
-
-  isAnyImpl(_context: Type[]): boolean {
+  isAnyImpl(_context: Context): boolean {
     return false;
   }
 }
@@ -303,7 +337,7 @@ export class Func extends Type {
     return `${this.argument}->${this.result}`;
   }
 
-  canAssignFromImpl(other: Type, context: Type[]): boolean {
+  canAssignFromImpl(other: Type, context: Context): boolean {
     if (other instanceof Func) {
       // a->b <: c->d iff (c <: a) and (d <: b)
       if (!other.argument.canAssignFromImpl(this.argument, context)) {
@@ -317,14 +351,14 @@ export class Func extends Type {
     return false;
   }
 
-  isNeverImpl(context: Type[]): boolean {
+  isNeverImpl(context: Context): boolean {
     if (this.result.isNeverImpl(context)) {
       return true;
     }
     return false;
   }
 
-  isAnyImpl(_context: Type[]): boolean {
+  isAnyImpl(_context: Context): boolean {
     return false;
   }
 }
@@ -338,7 +372,7 @@ export class App extends Type {
     return `(${this.inner})(${this.argument})`;
   }
 
-  canAssignFromImpl(other: Type, context: Type[]): boolean {
+  canAssignFromImpl(other: Type, context: Context): boolean {
     if (other instanceof App) {
       // a->b <: c->d iff (c <: a) and (d <: b)
       if (!other.argument.canAssignFromImpl(this.argument, context)) {
@@ -352,7 +386,7 @@ export class App extends Type {
     return false;
   }
 
-  isNeverImpl(context: Type[]): boolean {
+  isNeverImpl(context: Context): boolean {
     const thisSimple = this.simplify(context);
     if (thisSimple instanceof App) {
       return thisSimple.argument.isNeverImpl(context) || thisSimple.inner.isNeverImpl(context);
@@ -360,7 +394,7 @@ export class App extends Type {
     return thisSimple.isNeverImpl(context);
   }
 
-  isAnyImpl(context: Type[]): boolean {
+  isAnyImpl(context: Context): boolean {
     const thisSimple = this.simplify(context);
     if (thisSimple instanceof App) {
       return false;

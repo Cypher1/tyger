@@ -1,7 +1,7 @@
 import 'mocha';
 import {assert} from 'chai';
 
-import {never, unit, intersection, any, union, named, undefined_type, null_type, func, app} from '../src/type-util.js';
+import {never, unit, intersection, any, union, named, undefined_type, null_type, func, app, churchT, churchF, varT} from '../src/type-util.js';
 
 describe('type tests', () => {
   it('constructs Never', () => {
@@ -35,7 +35,7 @@ describe('type tests', () => {
   });
   it('named never', () => {
     const impossible = named('impossible', never());
-    assert.equal(impossible.toString(), 'impossible(Never)');
+    assert.equal(impossible.toString(), 'Never');
     assert.isTrue(impossible.isNever());
   });
   it('undefined type', () => {
@@ -138,11 +138,50 @@ describe('type tests', () => {
         assert.equal(dropF.toString(), 'b->a->a');
         assert.equal(dropFAppd.toString(), '(b->a->a)(b)');
 
+        assert.equal(dropFAppd.simplify([]).toString(), 'a->a');
         assert.isTrue(idA.equals(dropFAppd), '(1) applying an argument produces the inner');
         assert.isTrue(dropFAppd.equals(idA), '(2) applying an argument produces the inner');
         assert.isTrue(dropFMissAppd.equals(never()), 'applying a non-matching argument produces never');
         assert.isFalse(dropFAppd.isNever(), 'simplifying a valid type is not never');
         assert.isTrue(dropFMissAppd.isNever(), 'simplifying an invalid type is never');
+      });
+    });
+    describe('variables as types', () => {
+      it('left vs right', () => {
+        const left = varT(3, 'left');
+        const right = varT(4, 'right');
+        assert.equal(left.toString(), '$3#left');
+        assert.equal(right.toString(), '$4#right');
+        assert.equal(left.simplify([]).toString(), '$3#left');
+        assert.equal(right.simplify([]).toString(), '$4#right');
+        assert.isTrue(left.canAssignFrom(left), 'can assign left to left');
+        assert.isTrue(right.canAssignFrom(right), 'can assign right to right');
+        assert.isFalse(left.canAssignFrom(right), 'cannot assign right to left');
+        assert.isFalse(right.canAssignFrom(left), 'cannot assign left to right');
+      });
+    });
+    describe('church bools as types', () => {
+      it('true', () => {
+        const t = churchT();
+        const left = varT(3, 'left');
+        const right = varT(4, 'right');
+        assert.equal(t.toString(), 'Any->Any->$0#t');
+        const ifLeft = app(app(t, left), right);
+        assert.equal(ifLeft.toString(), '((Any->Any->$0#t)($3#left))($4#right)');
+        assert.equal(ifLeft.simplify([]).toString(), '$3#left');
+        assert.isTrue(ifLeft.canAssignFrom(left));
+        assert.isFalse(ifLeft.canAssignFrom(right));
+      });
+      it('false', () => {
+        const f = churchF();
+        const left = varT(3, 'left');
+        const right = varT(4, 'right');
+        assert.equal(f.toString(), 'Any->Any->$1#f');
+        const ifRight = app(app(f, left), right);
+        assert.equal(ifRight.toString(), '((Any->Any->$1#f)($3#left))($4#right)');
+        assert.equal(ifRight.simplify([]).toString(), '$4#right');
+        assert.isTrue(ifRight.canAssignFrom(right));
+        assert.isFalse(ifRight.canAssignFrom(left));
       });
     });
   });
