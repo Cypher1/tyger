@@ -9,8 +9,12 @@ export abstract class Type {
   abstract isNever(): boolean;
   abstract toStringImpl(): string;
 
+  unsubstitutable(): boolean {
+    return this instanceof Any || this instanceof Named || this instanceof Never;
+  }
+
   shift(delta: number, cutoff: number = 0): Type {
-    if (this instanceof Any || this instanceof Named) {
+    if (this.unsubstitutable()) {
       return this;
     } else if (this instanceof Var) {
       if (this.index < cutoff) {
@@ -30,12 +34,18 @@ export abstract class Type {
       const base = this.base.shift(delta, cutoff);
       const expr = this.expr.shift(delta, cutoff);
       return new Refined(base, expr);
+    } else if (this instanceof Union) {
+      let tys = new Set([]);
+      for (const ty of this.types) {
+        tys.add(ty.shift(delta, cutoff));
+      }
+      return new Union(tys);
     }
     throw new Error(`unknown type for shift ${this}`);
   }
 
   subst(index: number, val: Type, cutoff: number = 0): Type {
-    if (this instanceof Any || this instanceof Named) {
+    if (this.unsubstitutable()) {
       return this;
     } else if (this instanceof Var) {
       if (this.index === index) {
@@ -55,6 +65,12 @@ export abstract class Type {
       const base = this.base.subst(index, val, cutoff);
       const expr = this.expr.subst(index, val, cutoff);
       return new Refined(base, expr);
+    } else if (this instanceof Union) {
+      let tys = new Set([]);
+      for (const ty of this.types) {
+        tys.add(ty.subst(index, val, cutoff));
+      }
+      return new Union(tys);
     }
     console.log('Error', this);
     throw new Error(`unknown type for subst ${this}`);
@@ -71,7 +87,7 @@ export abstract class Type {
     if (this instanceof App) {
       const inner = this.inner.eval(depth+1);
       const argument = this.argument.eval(depth+1);
-      if (inner instanceof Func) {
+      if (inner instanceof Func && !(argument instanceof Var)) {
         if (inner.argument.canAssignFromImpl(argument, depth+1)) {
           return inner.result.subst(0, argument.shift(1)).shift(-1).eval(depth+1);
         } else {
@@ -147,6 +163,29 @@ export class Any extends Type {
   }
 }
 
+export class Never extends Type {
+  /* This is the 'Never' type, similar to void. */
+  constructor() {
+    super();
+  }
+
+  toStringImpl(): string {
+    return 'Never';
+  }
+
+  canAssignFromImpl(other: Type): boolean {
+    return other.eval().isNever();
+  }
+
+  isNever(): boolean {
+    return true;
+  }
+
+  isAny(): boolean {
+    return false;
+  }
+}
+
 export class Refined extends Type {
   constructor(public base: Type, public expr: Type) {
     // expr is an abstract type that must evaluate a non-never value for each value of base that
@@ -190,7 +229,7 @@ export class Union extends Type {
         return true; // `other` can be stored in `type`
       }
     }
-    return false;
+    return other.isNever();
   }
 
   isNever(): boolean {
