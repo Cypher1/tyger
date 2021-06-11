@@ -2,7 +2,8 @@ import 'mocha';
 import {assert} from 'chai';
 
 import {never, unit, intersection, any, union, named, undefined_type, null_type, func, app, applyAll,
-  churchT, churchF, churchBool, churchAnd, churchNat, churchPlus, varT} from '../src/type-util.js';
+  churchT, churchF, churchBool, churchAnd, churchOr, churchNot, churchNat, churchPlus, varT
+} from '../src/type-util.js';
 
 describe('type tests', () => {
   it('constructs Never', () => {
@@ -184,6 +185,17 @@ describe('type tests', () => {
         assert.isTrue(ifRight.canAssignFrom(right));
         assert.isFalse(ifRight.canAssignFrom(left));
       });
+      it('not', () => {
+        const left = varT(3, 'left');
+        const right = varT(4, 'right');
+        const not = churchNot();
+        for (const a of [true, false]) {
+          const notA = applyAll(not, churchBool(a), left, right).eval();
+          const expectedB = !a;
+          const expected = expectedB ? left : right;
+          assert.equal(notA.toString(), expected.toString(), `!${a} -> ${expectedB}`);
+        }
+      });
       it('and', () => {
         const left = varT(3, 'left');
         const right = varT(4, 'right');
@@ -194,6 +206,19 @@ describe('type tests', () => {
             const expectedB = a && b;
             const expected = expectedB ? left : right;
             assert.equal(andAB.toString(), expected.toString(), `${a} && ${b} -> ${expectedB}`);
+          }
+        }
+      });
+      it('or', () => {
+        const left = varT(3, 'left');
+        const right = varT(4, 'right');
+        const or = churchOr();
+        for (const a of [true, false]) {
+          for (const b of [true, false]) {
+            const orAB = applyAll(or, churchBool(a), churchBool(b), left, right).eval();
+            const expectedB = a || b;
+            const expected = expectedB ? left : right;
+            assert.equal(orAB.toString(), expected.toString(), `${a} || ${b} -> ${expectedB}`);
           }
         }
       });

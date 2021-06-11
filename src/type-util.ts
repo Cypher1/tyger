@@ -35,19 +35,33 @@ export function churchNat(n: number): Type {
   return withArgs(curr, any(), any());
 }
 
+function vars(...names: string[]): Type[] {
+  let args = [];
+  let id = 0;
+  for (const name of names) {
+    args.push(new Var(id, name));
+    id += 1;
+  }
+  return args;
+}
+
 export function churchPlus(): Type {
-  const n = new Var(3, 'n');
-  const m = new Var(2, 'm');
-  const f = new Var(1, 'f');
-  const x = new Var(0, 'x');
+  const [x, f, m, n] = vars('x', 'f', 'm', 'n');
   return withArgs(app(app(n, f), app(app(m, f), x)), any(), any(), any(), any());
 }
 
+export function churchNot(): Type {
+  const [f, t, a] = vars('f', 't', 'a');
+  return withArgs(app(app(a, f), t), any(), any(), any());
+}
+
+export function churchOr(): Type {
+  const [f, t, b, a] = vars('f', 't', 'b', 'a');
+  return withArgs(app(app(a, t), app(app(b, t), f)), any(), any(), any(), any());
+}
+
 export function churchAnd(): Type {
-  const a = new Var(3, 'a');
-  const b = new Var(2, 'b');
-  const t = new Var(1, 't');
-  const f = new Var(0, 'f');
+  const [f, t, b, a] = vars('f', 't', 'b', 'a');
   return withArgs(app(app(a, app(app(b, t), f)), f), any(), any(), any(), any());
 }
 
