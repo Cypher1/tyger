@@ -1,11 +1,22 @@
-import {Type, Refined, Var, Intersection, Union, Product, Named, Func, App} from './type.js';
+import {Any, Type, Refined, Var, Intersection, Union, Product, Named, Func, App} from './type.js';
 
 export function churchT(): Type {
-  return new Func(any(), new Func(any(), new Var(0, 't')));
+  return new Func(any(), new Func(any(), new Var(1, 't')));
 }
 
 export function churchF(): Type {
-  return new Func(any(), new Func(any(), new Var(1, 'f')));
+  return new Func(any(), new Func(any(), new Var(0, 'f')));
+}
+
+export function churchNat(n: number): Type {
+  const f = new Var(1, 'f');
+  const x = new Var(0, 'x');
+  let curr: Type = x;
+  while (n > 0) {
+    n -= 1;
+    curr = new App(f, curr);
+  }
+  return new Func(any(), new Func(any(), curr));
 }
 
 export function all(...conds: Type[]): Type {
@@ -30,7 +41,7 @@ export function never(): Type {
 }
 
 export function any(): Type {
-  return intersection();
+  return new Any();
 }
 
 export function unit(): Type {

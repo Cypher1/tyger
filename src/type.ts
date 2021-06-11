@@ -2,105 +2,124 @@ import {unit} from './type-util.js';
 
 type TypeSet = Set<Type>;
 
-type Context = Type[];
-
-function defaultContext(): Context {
-  return [];
-}
-
-function extend(curr: Context, t: Type): Context {
-  return [...curr, t];
-}
-
-function getTypeFrom(curr: Context, v: Var): Type {
-  if (v.index < curr.length) {
-    return curr[curr.length-1-v.index];
-  }
-  return null;
-}
-
 export abstract class Type {
 
-  abstract canAssignFromImpl(other: Type, context: Context): boolean;
-  abstract isAnyImpl(context: Context): boolean;
-  abstract isNeverImpl(context: Context): boolean;
-  abstract toStringImpl(context: Context): string;
+  abstract canAssignFromImpl(other: Type, depth?: number): boolean;
+  abstract isAny(): boolean;
+  abstract isNever(): boolean;
+  abstract toStringImpl(): string;
 
-  isAny(context: Context = defaultContext()): boolean {
-    return this.isAnyImpl(context);
-  }
-  isNever(context: Context = defaultContext()): boolean {
-    return this.isNeverImpl(context);
+  shift(delta: number, cutoff: number = 0): Type {
+    if (this instanceof Any || this instanceof Named) {
+      return this;
+    } else if (this instanceof Var) {
+      if (this.index < cutoff) {
+        return this;
+      } else {
+        return new Var(this.index+delta, this.name);
+      }
+    } else if (this instanceof Func) {
+      const result = this.result.shift(delta, cutoff+1);
+      const argument = this.argument.shift(delta, cutoff);
+      return new Func(argument, result);
+    } else if (this instanceof App) {
+      const inner = this.inner.shift(delta, cutoff);
+      const argument = this.argument.shift(delta, cutoff);
+      return new App(inner, argument);
+    } else if (this instanceof Refined) {
+      const base = this.base.shift(delta, cutoff);
+      const expr = this.expr.shift(delta, cutoff);
+      return new Refined(base, expr);
+    }
+    throw new Error(`unknown type for shift ${this}`);
   }
 
-  eval(context: Context, depth: number=0): Type {
-    //console.log('  '.repeat(depth), 'eval ', this.toStringImpl([]));
-    //console.log('  '.repeat(depth), context);
-    const res = this.evalImpl(context, depth);
-    //console.log('  '.repeat(depth), res.toStringImpl([]));
+  subst(index: number, val: Type, cutoff: number = 0): Type {
+    if (this instanceof Any || this instanceof Named) {
+      return this;
+    } else if (this instanceof Var) {
+      if (this.index === index) {
+        return val;
+      } else {
+        return this;
+      }
+    } else if (this instanceof Func) {
+      const result = this.result.subst(index+1, val.shift(1), cutoff);
+      const argument = this.argument.subst(index, val, cutoff); // DUNNO
+      return new Func(argument, result);
+    } else if (this instanceof App) {
+      const inner = this.inner.subst(index, val, cutoff);
+      const argument = this.argument.subst(index, val, cutoff);
+      return new App(inner, argument);
+    } else if (this instanceof Refined) {
+      const base = this.base.subst(index, val, cutoff);
+      const expr = this.expr.subst(index, val, cutoff);
+      return new Refined(base, expr);
+    }
+    console.log('Error', this);
+    throw new Error(`unknown type for subst ${this}`);
+  }
+
+  eval(depth: number=0): Type {
+    // console.log('  '.repeat(depth), '>>', this.toStringImpl());
+    const res = this.evalImpl(depth);
+    // console.log('  '.repeat(depth), '<<', res.toStringImpl());
     return res;
   }
 
-  evalImpl(context: Context, depth: number): Type {
+  evalImpl(depth: number): Type {
     if (this instanceof App) {
-      const arg = this.argument.eval(context, depth+1);
-      const newContext = extend(context, arg);
-      const inner = this.inner.eval(newContext, depth+1);
+      const inner = this.inner.eval(depth+1);
       if (inner instanceof Func) {
-        // Typed beta reduction
-        if (inner.argument.canAssignFromImpl(arg, newContext)) {
-          return inner.result;
+        if (inner.argument.canAssignFromImpl(this.argument, depth+1)) {
+          return inner.result.subst(0, this.argument.shift(1)).shift(-1).eval(depth+1);
         } else {
           return new Union(new Set());
         }
       }
-      return new App(inner, arg);
+      return new App(this.inner, this.argument);
     }
     if (this instanceof Func) {
-      return new Func(this.argument.eval(context, depth+1), this.result.eval(context, depth+1));
-    }
-    if (this instanceof Var) {
-      const val = getTypeFrom(context, this);
-      return val ? val : this;
+      return new Func(this.argument.eval(depth+1), this.result.eval(depth+1));
     }
     return this;
   }
 
-  canAssignFrom(other: Type, context: Context = defaultContext()): boolean {
-    const otherSimple = other.eval(context);
-    const thisSimple = this.eval(context);
+  canAssignFrom(other: Type, depth: number = 0): boolean {
+    const otherSimple = other.eval(depth+1);
+    const thisSimple = this.eval(depth+1);
     if (otherSimple instanceof Union) {
       for (var type of otherSimple.types) {
-        if (!thisSimple.canAssignFrom(type, context)) {
+        if (!thisSimple.canAssignFrom(type, depth+1)) {
           return false;
         }
       }
       return true;
     }
 
-    return thisSimple.canAssignFromImpl(otherSimple, context);
+    return thisSimple.canAssignFromImpl(otherSimple, depth+1);
   }
 
-  isSuperType(other: Type, context: Context = defaultContext()): boolean {
-    return this.canAssignFrom(other, context);
+  isSuperType(other: Type): boolean {
+    return this.canAssignFrom(other);
   }
 
-  isSubType(other: Type, context: Context = defaultContext()): boolean {
-    return other.canAssignFrom(this, context);
+  isSubType(other: Type): boolean {
+    return other.canAssignFrom(this);
   }
 
-  equals(other: Type, context: Context = defaultContext()): boolean {
-    return this.canAssignFrom(other, context) && other.canAssignFrom(this, context);
+  equals(other: Type): boolean {
+    return this.canAssignFrom(other) && other.canAssignFrom(this);
   }
 
   toString(): string {
-    if (this.isAnyImpl([])) {
+    if (this.isAny()) {
       return 'Any';
     }
-    if (this.isNeverImpl([])) {
+    if (this.isNever()) {
       return 'Never';
     }
-    return this.toStringImpl([]);
+    return this.toStringImpl();
   }
 }
 
@@ -111,18 +130,18 @@ export class Any extends Type {
   }
 
   toStringImpl(): string {
-    return '*';
+    return 'Any';
   }
 
-  canAssignFromImpl(other: Type, context: Context): boolean {
-    return !other.isNeverImpl(context);
+  canAssignFromImpl(other: Type): boolean {
+    return !other.isNever();
   }
 
-  isNeverImpl(_context: Context): boolean {
+  isNever(): boolean {
     return false;
   }
 
-  isAnyImpl(_context: Context): boolean {
+  isAny(): boolean {
     return true;
   }
 }
@@ -140,16 +159,16 @@ export class Refined extends Type {
     return `{${this.base}|${this.expr}}`;
   }
 
-  canAssignFromImpl(other: Type, context: Context): boolean {
-    return !other.isNeverImpl(context);
+  canAssignFromImpl(other: Type): boolean {
+    return !other.isNever();
   }
 
-  isNeverImpl(context: Context): boolean {
-    return this.base.isNeverImpl(context) || this.expr.isNeverImpl(context);
+  isNever(): boolean {
+    return this.base.isNever() || this.expr.isNever();
   }
 
-  isAnyImpl(context: Context): boolean {
-    return this.base.isAnyImpl(context) && this.expr.isAnyImpl(context);
+  isAny(): boolean {
+    return this.base.isAny() && this.expr.isAny();
   }
 }
 
@@ -164,27 +183,27 @@ export class Union extends Type {
     return `(${marker}${[...this.types].map(x => x.toString()).join(op)})`;
   }
 
-  canAssignFromImpl(other: Type, context: Context): boolean {
+  canAssignFromImpl(other: Type): boolean {
     for (var type of this.types) {
-      if (type.canAssignFrom(other, context)) {
+      if (type.canAssignFrom(other)) {
         return true; // `other` can be stored in `type`
       }
     }
     return false;
   }
 
-  isNeverImpl(context: Context): boolean {
+  isNever(): boolean {
     for (var type of this.types) {
-      if (!type.isNeverImpl(context)) {
+      if (!type.isNever()) {
         return false;
       }
     }
     return true;
   }
 
-  isAnyImpl(context: Context): boolean {
+  isAny(): boolean {
     for (var type of this.types) {
-      if (type.isNeverImpl(context)) {
+      if (type.isNever()) {
         return true;
       }
     }
@@ -203,27 +222,27 @@ export class Intersection extends Type {
     return `(${marker}${[...this.types].map(x => x.toString()).join(op)})`;
   }
 
-  canAssignFromImpl(other: Type, context: Context): boolean {
+  canAssignFromImpl(other: Type): boolean {
     for (var type of this.types) {
-      if (!type.canAssignFrom(other, context)) {
+      if (!type.canAssignFrom(other)) {
         return false; // other must match all requirements
       }
     }
     return true;
   }
 
-  isNeverImpl(context: Context): boolean {
+  isNever(): boolean {
     for (var type of this.types) {
-      if (type.isNeverImpl(context)) {
+      if (type.isNever()) {
         return true;
       }
     }
     return false;
   }
 
-  isAnyImpl(context: Context): boolean {
+  isAny(): boolean {
     for (var type of this.types) {
-      if (!type.isAnyImpl(context)) {
+      if (!type.isAny()) {
         return false;
       }
     }
@@ -236,8 +255,8 @@ export class Named extends Type {
     super();
   }
 
-  toStringImpl(context: Context): string {
-    if (this.type.isAnyImpl(context)) {
+  toStringImpl(): string {
+    if (this.type.isAny()) {
       return this.name;
     }
     if (this.type.equals(unit())) {
@@ -246,24 +265,24 @@ export class Named extends Type {
     return `${this.name}(${this.type})`;
   }
 
-  canAssignFromImpl(other: Type, context: Context): boolean {
+  canAssignFromImpl(other: Type): boolean {
     if (other instanceof Named && other.name === this.name) {
-      return this.type.canAssignFrom(other.type, context);
+      return this.type.canAssignFrom(other.type);
     }
     return false;
   }
 
-  isNeverImpl(context: Context): boolean {
-    return this.type.isNeverImpl(context);
+  isNever(): boolean {
+    return this.type.isNever();
   }
 
-  isAnyImpl(_context: Context): boolean {
+  isAny(): boolean {
     return false;
   }
 }
 
 export class Product extends Type {
-  constructor(public types: Context) {
+  constructor(public types: Type[]) {
     super();
   }
 
@@ -274,13 +293,13 @@ export class Product extends Type {
     return `(${this.types.map(x => x.toString()).join('*')})`;
   }
 
-  canAssignFromImpl(other: Type, context: Context): boolean {
+  canAssignFromImpl(other: Type): boolean {
     if (other instanceof Product) {
       if (this.types.length === other.types.length) {
         for (var ind in this.types) {
           const type = this.types[ind];
           const other_type = other.types[ind];
-          if (!type.canAssignFrom(other_type, context)) {
+          if (!type.canAssignFrom(other_type)) {
             return false;
           }
         }
@@ -290,16 +309,16 @@ export class Product extends Type {
     return false;
   }
 
-  isNeverImpl(context: Context): boolean {
+  isNever(): boolean {
     for (var type of this.types) {
-      if (type.isNeverImpl(context)) {
+      if (type.isNever()) {
         return true;
       }
     }
     return false;
   }
 
-  isAnyImpl(_context: Context): boolean {
+  isAny(): boolean {
     return false;
   }
 }
@@ -314,16 +333,16 @@ export class Var extends Type {
     return `$${this.index}${this.name ? `#${this.name}` : ``}`;
   }
 
-  canAssignFromImpl(other: Type, _context: Context): boolean {
+  canAssignFromImpl(other: Type): boolean {
     // All we know is that we can assign if they are the same variable
     return (other instanceof Var && this.index == other.index);
   }
 
-  isNeverImpl(_context: Context): boolean {
+  isNever(): boolean {
     return false;
   }
 
-  isAnyImpl(_context: Context): boolean {
+  isAny(): boolean {
     return false;
   }
 }
@@ -337,13 +356,13 @@ export class Func extends Type {
     return `${this.argument}->${this.result}`;
   }
 
-  canAssignFromImpl(other: Type, context: Context): boolean {
+  canAssignFromImpl(other: Type): boolean {
     if (other instanceof Func) {
       // a->b <: c->d iff (c <: a) and (d <: b)
-      if (!other.argument.canAssignFromImpl(this.argument, context)) {
+      if (!other.argument.canAssignFromImpl(this.argument)) {
         return false; // the arguments cannot be assigned
       }
-      if (!this.result.canAssignFromImpl(other.result, context)) {
+      if (!this.result.canAssignFromImpl(other.result)) {
         return false; // the results cannot be assigned
       }
       return true;
@@ -351,14 +370,14 @@ export class Func extends Type {
     return false;
   }
 
-  isNeverImpl(context: Context): boolean {
-    if (this.result.isNeverImpl(context)) {
+  isNever(): boolean {
+    if (this.result.isNever()) {
       return true;
     }
     return false;
   }
 
-  isAnyImpl(_context: Context): boolean {
+  isAny(): boolean {
     return false;
   }
 }
@@ -372,13 +391,13 @@ export class App extends Type {
     return `(${this.inner})(${this.argument})`;
   }
 
-  canAssignFromImpl(other: Type, context: Context): boolean {
+  canAssignFromImpl(other: Type): boolean {
     if (other instanceof App) {
       // a->b <: c->d iff (c <: a) and (d <: b)
-      if (!other.argument.canAssignFromImpl(this.argument, context)) {
+      if (!other.argument.canAssignFromImpl(this.argument)) {
         return false; // the arguments cannot be assigned
       }
-      if (!this.inner.canAssignFromImpl(other.inner, context)) {
+      if (!this.inner.canAssignFromImpl(other.inner)) {
         return false; // the results cannot be assigned
       }
       return true;
@@ -386,19 +405,19 @@ export class App extends Type {
     return false;
   }
 
-  isNeverImpl(context: Context): boolean {
-    const thisSimple = this.eval(context);
+  isNever(): boolean {
+    const thisSimple = this.eval();
     if (thisSimple instanceof App) {
-      return thisSimple.argument.isNeverImpl(context) || thisSimple.inner.isNeverImpl(context);
+      return thisSimple.argument.isNever() || thisSimple.inner.isNever();
     }
-    return thisSimple.isNeverImpl(context);
+    return thisSimple.isNever();
   }
 
-  isAnyImpl(context: Context): boolean {
-    const thisSimple = this.eval(context);
+  isAny(): boolean {
+    const thisSimple = this.eval();
     if (thisSimple instanceof App) {
       return false;
     }
-    return thisSimple.isAnyImpl(context);
+    return thisSimple.isAny();
   }
 }
