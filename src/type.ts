@@ -2,18 +2,33 @@ import {unit} from './type-util.js';
 
 type TypeSet = Set<Type>;
 
-export abstract class Type {
+const startDepth = '';
+type Depth = string;
 
-  abstract canAssignFromImpl(other: Type, depth?: number): boolean;
-  abstract isAny(): boolean;
-  abstract isNever(): boolean;
+export abstract class Type {
+  private evaluated = null;
+
+  abstract canAssignFromImpl(other: Type, depth?: Depth): boolean;
+  abstract isAny(depth?: Depth): boolean;
+  abstract isSatisfiableImpl(depth?: Depth): boolean;
   abstract toStringImpl(): string;
+
+  isSatisfiable(depth?: Depth): boolean {
+    if (this.isAny(depth)) {
+      return true;
+    }
+    return this.isSatisfiableImpl(depth);
+  }
+
+  isNever(depth?: Depth): boolean {
+    return !this.isSatisfiable(depth);
+  }
 
   unsubstitutable(): boolean {
     return this instanceof Any || this instanceof Named || this instanceof Never;
   }
 
-  shift(delta: number, cutoff: number = 0): Type {
+  shift(delta: number, cutoff: number=0): Type {
     if (this.unsubstitutable()) {
       return this;
     } else if (this instanceof Var) {
@@ -30,6 +45,10 @@ export abstract class Type {
       const inner = this.inner.shift(delta, cutoff);
       const argument = this.argument.shift(delta, cutoff);
       return new App(inner, argument);
+    } else if (this instanceof Fallback) {
+      const ty = this.ty.shift(delta, cutoff);
+      const def = this.def.shift(delta, cutoff);
+      return new Fallback(ty, def);
     } else if (this instanceof Refined) {
       const base = this.base.shift(delta, cutoff);
       const expr = this.expr.shift(delta, cutoff);
@@ -44,7 +63,7 @@ export abstract class Type {
     throw new Error(`unknown type for shift ${this}`);
   }
 
-  subst(index: number, val: Type, cutoff: number = 0): Type {
+  subst(index: number, val: Type, cutoff: Depth): Type {
     if (this.unsubstitutable()) {
       return this;
     } else if (this instanceof Var) {
@@ -61,6 +80,10 @@ export abstract class Type {
       const inner = this.inner.subst(index, val, cutoff);
       const argument = this.argument.subst(index, val, cutoff);
       return new App(inner, argument);
+    } else if (this instanceof Fallback) {
+      const ty = this.ty.subst(index, val, cutoff);
+      const def = this.def.subst(index, val, cutoff);
+      return new Fallback(ty, def);
     } else if (this instanceof Refined) {
       const base = this.base.subst(index, val, cutoff);
       const expr = this.expr.subst(index, val, cutoff);
@@ -76,66 +99,140 @@ export abstract class Type {
     throw new Error(`unknown type for subst ${this}`);
   }
 
-  eval(depth: number=0): Type {
-    // console.log('  '.repeat(depth), '>>', this.toStringImpl());
-    const res = this.evalImpl(depth);
-    // console.log('  '.repeat(depth), '<<', res.toStringImpl());
+  evalForTest(): Type {
+    return this.eval(startDepth);
+  }
+
+  eval(depth: Depth): Type {
+    if (this.evaluated) {
+      console.log(depth, '..', this.toStringImpl(), '=>', this.evaluated.toStringImpl());
+      return this.evaluated; // TODO: Clone?
+    }
+    console.log(depth, '>>', this.toStringImpl());
+    const res = this.evalImpl(depth+`  `);
+    res.evaluated = res;
+    console.log(depth, '<<', this.toStringImpl(), '=>', res.toStringImpl());
     return res;
   }
 
-  evalImpl(depth: number): Type {
+  evalImpl(depth: Depth): Type {
     if (this instanceof App) {
-      const inner = this.inner.eval(depth+1);
-      const argument = this.argument.eval(depth+1);
+      const inner = this.inner; // .eval(depth);
+      const argument = this.argument; // .eval(depth);
       if (inner instanceof Func && !(argument instanceof Var)) {
-        if (inner.argument.canAssignFromImpl(argument, depth+1)) {
-          return inner.result.subst(0, argument.shift(1)).shift(-1).eval(depth+1);
+        if (inner.argument.canAssignFromImpl(argument, depth)) {
+          return inner.result.subst(0, argument.shift(1), depth).shift(-1).eval(depth);
         } else {
           return new Union(new Set());
         }
+      } else if (inner instanceof Fallback && !(argument instanceof Var)) {
+        // Propagate the application inside the fallback
+        const ty = new App(inner.ty, this.argument); // .eval(depth);
+        const def = new App(inner.def, this.argument); // .eval(depth);
+        return new Fallback(ty, def).eval(depth);
       }
       return new App(inner, argument);
-    }
-    if (this instanceof Func) {
-      return new Func(this.argument.eval(depth+1), this.result.eval(depth+1));
+    } else if (this instanceof Fallback) {
+      const ty = this.ty.eval(depth);
+      const def = this.def.eval(depth);
+      if (ty.equals(def)) {
+        return ty;
+      }
+      if (ty.isNever(depth)) {
+        return def;
+      } else if (ty.isSatisfiable(depth)) {
+        return ty;
+      } else {
+        return this;
+      }
+    } else if (this instanceof Func) {
+      return new Func(this.argument.eval(depth), this.result.eval(depth));
+    } else if (this instanceof Intersection) {
+      const tys = new Set();
+      for (const ty of this.types) {
+        const evaled = ty.eval(depth);
+        if (evaled.isNever()) {
+          return new Never();
+        }
+        if ([...tys].every(other => !other.equals(ty))) {
+          tys.add(evaled);
+        }
+      }
+      if (tys.size === 1) {
+        return [...tys][0];
+      }
+      return new Intersection(tys);
+    } else if (this instanceof Product) {
+      const tys = [];
+      for (const ty of this.types) {
+        const evaled = ty.eval(depth);
+        if (evaled.isNever()) {
+          return new Never();
+        }
+        tys.push(evaled);
+      }
+      if (tys.length === 1) {
+        return [...tys][0];
+      }
+      return new Product(tys);
+    } else if (this instanceof Union) {
+      const tys = new Set();
+      for (const ty of this.types) {
+        const evaled = ty.eval(depth);
+        if (evaled.isSatisfiable() && [...tys].every(other => !other.equals(ty))) {
+          tys.add(evaled);
+        }
+      }
+      if (tys.size === 1) {
+        return [...tys][0];
+      } else if (tys.size === 0) {
+        return new Never();
+      }
+      return new Union(tys);
     }
     return this;
   }
 
-  canAssignFrom(other: Type, depth: number = 0): boolean {
-    const otherSimple = other.eval(depth+1);
-    const thisSimple = this.eval(depth+1);
+  canAssignFrom(other: Type, depth: string=startDepth): boolean {
+    const otherSimple = other.eval(depth);
+    const thisSimple = this.eval(depth);
     if (otherSimple instanceof Union) {
       for (var type of otherSimple.types) {
-        if (!thisSimple.canAssignFrom(type, depth+1)) {
+        if (!thisSimple.canAssignFrom(type, depth)) {
           return false;
         }
       }
-      return true;
+      return !otherSimple.isNever();
+    } else if (otherSimple instanceof Intersection) {
+      for (var type of otherSimple.types) {
+        if (thisSimple.canAssignFrom(type, depth)) {
+          return true;
+        }
+      }
+      return false;
     }
-
-    return thisSimple.canAssignFromImpl(otherSimple, depth+1);
+    return thisSimple.canAssignFromImpl(otherSimple, depth);
   }
 
-  isSuperType(other: Type): boolean {
-    return this.canAssignFrom(other);
+  isSuperType(other: Type, depth: string=startDepth): boolean {
+    return this.canAssignFrom(other, depth);
   }
 
-  isSubType(other: Type): boolean {
-    return other.canAssignFrom(this);
+  isSubType(other: Type, depth: string=startDepth): boolean {
+    return other.canAssignFrom(this, depth);
   }
 
-  equals(other: Type): boolean {
-    return this.canAssignFrom(other) && other.canAssignFrom(this);
+  equals(other: Type, depth: string=startDepth): boolean {
+    return this.canAssignFrom(other, depth) && other.canAssignFrom(this, depth);
   }
 
-  toString(): string {
-    if (this.isAny()) {
-      return 'Any';
-    }
-    if (this.isNever()) {
-      return 'Never';
-    }
+  toString(_depth: string=startDepth): string {
+    // if (this.isAny(depth)) {
+      // return 'Any';
+    // }
+    // if (this.isNever(depth)) {
+      // return 'Never';
+    // }
     return this.toStringImpl();
   }
 }
@@ -150,12 +247,12 @@ export class Any extends Type {
     return 'Any';
   }
 
-  canAssignFromImpl(other: Type): boolean {
-    return !other.isNever();
+  canAssignFromImpl(_other: Type, _depth: Depth): boolean {
+    return true;
   }
 
-  isNever(): boolean {
-    return false;
+  isSatisfiableImpl(): boolean {
+    return true;
   }
 
   isAny(): boolean {
@@ -173,16 +270,39 @@ export class Never extends Type {
     return 'Never';
   }
 
-  canAssignFromImpl(other: Type): boolean {
-    return other.eval().isNever();
+  canAssignFromImpl(other: Type, depth: Depth): boolean {
+    return other.eval(depth).isNever(depth);
   }
 
-  isNever(): boolean {
-    return true;
+  isSatisfiableImpl(): boolean {
+    return false;
   }
 
   isAny(): boolean {
     return false;
+  }
+}
+
+export class Fallback extends Type {
+  /* This is the 'Fallback' type, similar to catch?. */
+  constructor(public ty: Type, public def: Type) {
+    super();
+  }
+
+  toStringImpl(): string {
+    return `${this.ty}||${this.def}`;
+  }
+
+  canAssignFromImpl(other: Type, depth: Depth): boolean {
+    return other.eval(depth).isNever(depth);
+  }
+
+  isSatisfiableImpl(depth?: Depth): boolean {
+    return this.ty.isSatisfiable(depth) || this.def.isSatisfiable(depth);
+  }
+
+  isAny(): boolean {
+    return this.ty.isAny() || (this.ty.isNever() && this.def.isAny());
   }
 }
 
@@ -199,12 +319,13 @@ export class Refined extends Type {
     return `{${this.base}|${this.expr}}`;
   }
 
-  canAssignFromImpl(other: Type): boolean {
-    return !other.isNever();
+  canAssignFromImpl(other: Type, depth: Depth): boolean {
+    return !other.isNever(depth + 1);
   }
 
-  isNever(): boolean {
-    return this.base.isNever() || this.expr.isNever();
+  isSatisfiableImpl(): boolean {
+    // TODO: check expr is satisfiable in the context of base
+    return this.base.isSatisfiable() || this.expr.isSatisfiable();
   }
 
   isAny(): boolean {
@@ -223,22 +344,23 @@ export class Union extends Type {
     return `(${marker}${[...this.types].map(x => x.toString()).join(op)})`;
   }
 
-  canAssignFromImpl(other: Type): boolean {
+  canAssignFromImpl(other: Type, depth: Depth): boolean {
+    console.log('canAssignFromImpl Union', this.toStringImpl(), other.toStringImpl());
     for (var type of this.types) {
-      if (type.canAssignFrom(other)) {
+      if (type.canAssignFrom(other, depth)) {
         return true; // `other` can be stored in `type`
       }
     }
     return other.isNever();
   }
 
-  isNever(): boolean {
+  isSatisfiableImpl(): boolean {
     for (var type of this.types) {
-      if (!type.isNever()) {
-        return false;
+      if (type.isSatisfiable()) {
+        return true;
       }
     }
-    return true;
+    return false;
   }
 
   isAny(): boolean {
@@ -262,22 +384,23 @@ export class Intersection extends Type {
     return `(${marker}${[...this.types].map(x => x.toString()).join(op)})`;
   }
 
-  canAssignFromImpl(other: Type): boolean {
+  canAssignFromImpl(other: Type, depth: Depth): boolean {
     for (var type of this.types) {
-      if (!type.canAssignFrom(other)) {
+      if (!type.canAssignFrom(other, depth + 1)) {
         return false; // other must match all requirements
       }
     }
     return true;
   }
 
-  isNever(): boolean {
+  isSatisfiableImpl(depth: Depth): boolean {
     for (var type of this.types) {
-      if (type.isNever()) {
-        return true;
+      if (!type.isSatisfiable(depth + 1)) {
+        return false;
       }
     }
-    return false;
+    // TODO: Check that the intersections are not empty
+    return true;
   }
 
   isAny(): boolean {
@@ -305,15 +428,26 @@ export class Named extends Type {
     return `${this.name}(${this.type})`;
   }
 
-  canAssignFromImpl(other: Type): boolean {
-    if (other instanceof Named && other.name === this.name) {
-      return this.type.canAssignFrom(other.type);
+  canAssignFromImpl(other: Type, depth: Depth): boolean {
+    console.log('canAssignFromImpl Named', this.toStringImpl(), other.toStringImpl());
+    if (!(other instanceof Named)) {
+      console.log('canAssignFromImpl Named(2)', this.toStringImpl(), other.toStringImpl());
+      return false;
     }
-    return false;
+    if (other.name !== this.name) {
+      console.log('canAssignFromImpl Named(3)', this.toStringImpl(), other.toStringImpl());
+      return false;
+    }
+    if (!this.type.canAssignFrom(other.type, depth)) {
+      console.log('canAssignFromImpl Named(4)', this.toStringImpl(), other.toStringImpl());
+      return false;
+    }
+    console.log('canAssignFromImpl Named(5)', this.toStringImpl(), other.toStringImpl());
+    return true;
   }
 
-  isNever(): boolean {
-    return this.type.isNever();
+  isSatisfiableImpl(): boolean {
+    return this.type.isSatisfiable();
   }
 
   isAny(): boolean {
@@ -333,13 +467,13 @@ export class Product extends Type {
     return `(${this.types.map(x => x.toString()).join('*')})`;
   }
 
-  canAssignFromImpl(other: Type): boolean {
+  canAssignFromImpl(other: Type, depth: Depth): boolean {
     if (other instanceof Product) {
       if (this.types.length === other.types.length) {
         for (var ind in this.types) {
           const type = this.types[ind];
           const other_type = other.types[ind];
-          if (!type.canAssignFrom(other_type)) {
+          if (!type.canAssignFrom(other_type, depth)) {
             return false;
           }
         }
@@ -349,13 +483,14 @@ export class Product extends Type {
     return false;
   }
 
-  isNever(): boolean {
+  isSatisfiableImpl(): boolean {
     for (var type of this.types) {
-      if (type.isNever()) {
-        return true;
+      if (!type.isSatisfiable()) {
+        return false;
       }
     }
-    return false;
+    // TODO: Check that the intersections are not empty
+    return true;
   }
 
   isAny(): boolean {
@@ -373,13 +508,13 @@ export class Var extends Type {
     return `$${this.index}${this.name ? `#${this.name}` : ``}`;
   }
 
-  canAssignFromImpl(other: Type): boolean {
+  canAssignFromImpl(other: Type, _depth: Depth): boolean {
     // All we know is that we can assign if they are the same variable
     return (other instanceof Var && this.index == other.index);
   }
 
-  isNever(): boolean {
-    return false;
+  isSatisfiableImpl(): boolean {
+    return true;
   }
 
   isAny(): boolean {
@@ -396,7 +531,7 @@ export class Func extends Type {
     return `${this.argument}->${this.result}`;
   }
 
-  canAssignFromImpl(other: Type): boolean {
+  canAssignFromImpl(other: Type, depth: Depth): boolean {
     if (other instanceof Func) {
       // a->b <: c->d iff (c <: a) and (d <: b)
       if (!other.argument.canAssignFromImpl(this.argument)) {
@@ -410,11 +545,8 @@ export class Func extends Type {
     return false;
   }
 
-  isNever(): boolean {
-    if (this.result.isNever()) {
-      return true;
-    }
-    return false;
+  isSatisfiableImpl(): boolean {
+    return (this.result.isSatisfiable() && this.argument.isSatisfiable());
   }
 
   isAny(): boolean {
@@ -431,7 +563,7 @@ export class App extends Type {
     return `(${this.inner})(${this.argument})`;
   }
 
-  canAssignFromImpl(other: Type): boolean {
+  canAssignFromImpl(other: Type, _depth: string=startDepth): boolean {
     if (other instanceof App) {
       // a->b <: c->d iff (c <: a) and (d <: b)
       if (!other.argument.canAssignFromImpl(this.argument)) {
@@ -445,16 +577,16 @@ export class App extends Type {
     return false;
   }
 
-  isNever(): boolean {
-    const thisSimple = this.eval();
+  isSatisfiableImpl(): boolean {
+    const thisSimple = this.eval(startDepth);
     if (thisSimple instanceof App) {
-      return thisSimple.argument.isNever() || thisSimple.inner.isNever();
+      return thisSimple.inner.isSatisfiable();// TODO: && thisSimple.argument.isSatisfiable());
     }
-    return thisSimple.isNever();
+    return thisSimple.isSatisfiable();
   }
 
   isAny(): boolean {
-    const thisSimple = this.eval();
+    const thisSimple = this.eval(startDepth);
     if (thisSimple instanceof App) {
       return false;
     }

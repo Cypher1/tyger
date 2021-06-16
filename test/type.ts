@@ -2,7 +2,8 @@ import 'mocha';
 import {assert} from 'chai';
 
 import {never, unit, intersection, any, union, named, undefined_type, null_type, func, app, applyAll,
-  churchT, churchF, churchBool, churchAnd, churchOr, churchNot, churchNat, churchPlus, requireType
+  churchT, churchF, churchBool, churchAnd, churchOr, churchNot, churchNat, churchPlus, requireType,
+  isType, fallback
 } from '../src/type-util.js';
 
 describe('type tests', () => {
@@ -16,13 +17,13 @@ describe('type tests', () => {
   });
   it('constructs Intersection of Any and Never', () => {
     const anyAndNever = intersection(any(), never());
-    assert.equal(anyAndNever.toString(), 'Never');
-    assert.isTrue(anyAndNever.isNever());
+    assert.equal(anyAndNever.evalForTest().toString(), 'Never');
+    assert.isTrue(anyAndNever.evalForTest().isNever());
   });
   it('constructs Intersection of Any and Any', () => {
     const anyAndAny = intersection(any(), any());
-    assert.equal(anyAndAny.toString(), 'Any');
-    assert.isFalse(anyAndAny.isNever());
+    assert.equal(anyAndAny.evalForTest().toString(), 'Any');
+    assert.isFalse(anyAndAny.evalForTest().isNever());
   });
   it('constructs Any', () => {
     assert.equal(any().toString(), 'Any');
@@ -37,7 +38,7 @@ describe('type tests', () => {
   });
   it('named never', () => {
     const impossible = named('impossible', never());
-    assert.equal(impossible.toString(), 'Never');
+    assert.equal(impossible.toString(), 'impossible(Never)');
     assert.isTrue(impossible.isNever());
   });
   it('undefined type', () => {
@@ -140,7 +141,7 @@ describe('type tests', () => {
         assert.equal(dropF.toString(), 'b->a->a');
         assert.equal(dropFAppd.toString(), '(b->a->a)(b)');
 
-        assert.equal(dropFAppd.eval().toString(), 'a->a');
+        assert.equal(dropFAppd.evalForTest().toString(), 'a->a');
         assert.isTrue(idA.equals(dropFAppd), '(1) applying an argument produces the inner');
         assert.isTrue(dropFAppd.equals(idA), '(2) applying an argument produces the inner');
         assert.equal(dropFMissAppd.toString(), 'Never', 'applying a non-matching argument produces never');
@@ -155,8 +156,8 @@ describe('type tests', () => {
         const right = named('right', any());
         assert.equal(left.toString(), 'left');
         assert.equal(right.toString(), 'right');
-        assert.equal(left.eval().toString(), 'left');
-        assert.equal(right.eval().toString(), 'right');
+        assert.equal(left.evalForTest().toString(), 'left');
+        assert.equal(right.evalForTest().toString(), 'right');
         assert.isTrue(left.canAssignFrom(left), 'can assign left to left');
         assert.isTrue(right.canAssignFrom(right), 'can assign right to right');
         assert.isFalse(left.canAssignFrom(right), 'cannot assign right to left');
@@ -171,7 +172,7 @@ describe('type tests', () => {
         assert.equal(t.toStringImpl(), 'Any->Any->$1#t');
         const ifLeft = app(app(t, left), right);
         assert.equal(ifLeft.toStringImpl(), '((Any->Any->$1#t)(left))(right)');
-        assert.equal(ifLeft.eval().toStringImpl(), 'left');
+        assert.equal(ifLeft.evalForTest().toStringImpl(), 'left');
         assert.isTrue(ifLeft.canAssignFrom(left));
         assert.isFalse(ifLeft.canAssignFrom(right));
       });
@@ -182,7 +183,7 @@ describe('type tests', () => {
         assert.equal(f.toString(), 'Any->Any->$0#f');
         const ifRight = app(app(f, left), right);
         assert.equal(ifRight.toString(), '((Any->Any->$0#f)(left))(right)');
-        assert.equal(ifRight.eval().toString(), 'right');
+        assert.equal(ifRight.evalForTest().toString(), 'right');
         assert.isTrue(ifRight.canAssignFrom(right));
         assert.isFalse(ifRight.canAssignFrom(left));
       });
@@ -191,7 +192,7 @@ describe('type tests', () => {
         const right = named('right', any());
         const not = churchNot();
         for (const a of [true, false]) {
-          const notA = applyAll(not, churchBool(a), left, right).eval();
+          const notA = applyAll(not, churchBool(a), left, right).evalForTest();
           const expectedB = !a;
           const expected = expectedB ? left : right;
           assert.equal(notA.toString(), expected.toString(), `!${a} -> ${expectedB}`);
@@ -203,7 +204,7 @@ describe('type tests', () => {
         const and = churchAnd();
         for (const a of [true, false]) {
           for (const b of [true, false]) {
-            const andAB = applyAll(and, churchBool(a), churchBool(b), left, right).eval();
+            const andAB = applyAll(and, churchBool(a), churchBool(b), left, right).evalForTest();
             const expectedB = a && b;
             const expected = expectedB ? left : right;
             assert.equal(andAB.toString(), expected.toString(), `${a} && ${b} -> ${expectedB}`);
@@ -216,7 +217,7 @@ describe('type tests', () => {
         const or = churchOr();
         for (const a of [true, false]) {
           for (const b of [true, false]) {
-            const orAB = applyAll(or, churchBool(a), churchBool(b), left, right).eval();
+            const orAB = applyAll(or, churchBool(a), churchBool(b), left, right).evalForTest();
             const expectedB = a || b;
             const expected = expectedB ? left : right;
             assert.equal(orAB.toString(), expected.toString(), `${a} || ${b} -> ${expectedB}`);
@@ -232,7 +233,7 @@ describe('type tests', () => {
         const f = named('fun', any());
         const fNTimes = applyAll(n, f, startV);
         assert.equal(fNTimes.toString(), '((Any->Any->$0#x)(fun))(start)');
-        assert.equal(fNTimes.eval().toString(), 'start');
+        assert.equal(fNTimes.evalForTest().toString(), 'start');
       });
       it('1', () => {
         const n = churchNat(1);
@@ -241,7 +242,7 @@ describe('type tests', () => {
         const f = named('fun', any());
         const fNTimes = applyAll(n, f, startV);
         assert.equal(fNTimes.toString(), '((Any->Any->($1#f)($0#x))(fun))(start)');
-        assert.equal(fNTimes.eval().toString(), '(fun)(start)');
+        assert.equal(fNTimes.evalForTest().toString(), '(fun)(start)');
       });
       it('2', () => {
         const n = churchNat(2);
@@ -250,7 +251,7 @@ describe('type tests', () => {
         const f = named('fun', any());
         const fNTimes = applyAll(n, f, startV);
         assert.equal(fNTimes.toString(), '((Any->Any->($1#f)(($1#f)($0#x)))(fun))(start)');
-        assert.equal(fNTimes.eval().toString(), '(fun)((fun)(start))');
+        assert.equal(fNTimes.evalForTest().toString(), '(fun)((fun)(start))');
       });
       it('3', () => {
         const n = churchNat(3);
@@ -259,7 +260,7 @@ describe('type tests', () => {
         const f = named('fun', any());
         const fNTimes = applyAll(n, f, startV);
         assert.equal(fNTimes.toString(), '((Any->Any->($1#f)(($1#f)(($1#f)($0#x))))(fun))(start)');
-        assert.equal(fNTimes.eval().toString(), '(fun)((fun)((fun)(start)))');
+        assert.equal(fNTimes.evalForTest().toString(), '(fun)((fun)((fun)(start)))');
       });
       it('plus', () => {
         const plus = churchPlus();
@@ -267,10 +268,36 @@ describe('type tests', () => {
         const four = churchNat(4);
         const startV = named('start', any());
         const f = named('fun', any());
-        const res = applyAll(plus, three, four, f, startV).eval();
-        const sevenApp = applyAll(churchNat(7), f, startV).eval();
+        const res = applyAll(plus, three, four, f, startV).evalForTest();
+        const sevenApp = applyAll(churchNat(7), f, startV).evalForTest();
         assert.equal(res.toString(), sevenApp.toString(), 'String equality');
         assert.isTrue(res.equals(sevenApp), 'Structural equality');
+      });
+    });
+    describe('fallback', () => {
+      it('fallback toString', () => {
+        assert.equal(fallback().toString(), 'Any->Any->$1#ty||$0#def');
+      });
+      it('fallback of never is default', () => {
+        const three = churchNat(3);
+        const shouldFallback = applyAll(fallback(), never(), three);
+        const evaled = shouldFallback.evalForTest();
+        assert.equal(evaled.toString(), three.toString(), `${shouldFallback.toStringImpl()} is ${evaled.toString()} but should be ${three.toString()}`);
+      });
+      it('fallback of non-never ty is ty', () => {
+        const three = churchNat(3);
+        const four = churchNat(4);
+        const startV = named('start', any());
+        const f = named('fun', any());
+        const fallbackOfAny = applyAll(fallback(), three, four, f, startV).evalForTest();
+        const threeFStartV = applyAll(three, f, startV).evalForTest();
+        assert.equal(fallbackOfAny.toString(), threeFStartV.toString(), 'Types should be equal');
+        assert.isTrue(fallbackOfAny.equals(threeFStartV), 'We can assign to a fallback type');
+      });
+      it('fallback of ty and ty is ty', () => {
+        const v = churchT();
+        const fallbackOfAny = applyAll(fallback(), v, v);
+        assert.equal(fallbackOfAny.evalForTest().toString(), v.toString());
       });
     });
     describe('requireType', () => {
@@ -279,13 +306,28 @@ describe('type tests', () => {
       });
       it('requireType always true for non never types', () => {
         const three = churchNat(3);
-        const threeIsAny = app(app(requireType(), any()), three).eval();
+        const threeIsAny = app(app(requireType(), any()), three).evalForTest();
         assert.equal(threeIsAny.toString(), three.toString());
       });
       it('requireType always false for non never types', () => {
         const three = churchNat(3);
-        const threeIsAny = app(app(requireType(), never()), three).eval();
+        const threeIsAny = app(app(requireType(), never()), three).evalForTest();
         assert.equal(threeIsAny.toString(), never().toString());
+      });
+    });
+    describe('isType', () => {
+      it('isType toString', () => {
+        assert.equal(isType().toString(), 'Any->Any->Any->Any->($1#ty->$0#v)($0#v)');
+      });
+      it('isType always true for non never types', () => {
+        const three = churchNat(3);
+        const threeIsAny = app(app(isType(), any()), three).evalForTest();
+        assert.equal(threeIsAny.toString(), churchT().toString());
+      });
+      it('isType always false for non never types', () => {
+        const three = churchNat(3);
+        const threeIsAny = app(app(isType(), never()), three).evalForTest();
+        assert.equal(threeIsAny.toString(), churchF().toString());
       });
     });
   });

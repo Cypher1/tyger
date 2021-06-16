@@ -1,4 +1,4 @@
-import {Any, Type, Refined, Never, Var, Intersection, Union, Product, Named, Func, App} from './type.js';
+import {Any, Type, Refined, Fallback, Never, Var, Intersection, Union, Product, Named, Func, App} from './type.js';
 
 export function withArgs(inner: Type, ...types: Type[]): Type {
   let curr = inner;
@@ -70,10 +70,23 @@ export function requireType(): Type {
   return withArgs(app(new Func(t, v), v), any(), any());
 }
 
-// export function all(...conds: Type[]): Type {
-  // let cond = churchT();
-  // return new Refined(any(), cond);
-// }
+export function fallback(): Type {
+  const [def, ty] = vars('def', 'ty');
+  return withArgs(new Fallback(ty, def), any(), any());
+}
+
+export function isType(): Type {
+  const [v, t] = vars('v', 't');
+  return withArgs(app(app(fallback(), app(new Func(t, churchT()), v)), churchF()), any(), any());
+}
+
+export function all(...conds: Type[]): Type {
+  let curr = churchT();
+  for (const cond of conds) {
+    curr = app(app(churchOr(), curr), cond);
+  }
+  return new Refined(any(), curr);
+}
 
 export function intersection(...types: Type[]): Type {
   return new Intersection(new Set(types));
