@@ -5,8 +5,16 @@ type TypeSet = Set<Type>;
 const startDepth = '';
 type Depth = string;
 
+export function makeUnion(tys: Set<Type>): Union|Never {
+    if (tys.size === 0) {
+      return new Never();
+    }
+    return new Union(tys);
+}
+
 export abstract class Type {
-  private evaluated = null;
+  private evaluated: Type|null = null;
+  private stringified: string|null = null;
 
   abstract canAssignFromImpl(other: Type, depth?: Depth): boolean;
   abstract isAny(depth?: Depth): boolean;
@@ -58,7 +66,7 @@ export abstract class Type {
       for (const ty of this.types) {
         tys.add(ty.shift(delta, cutoff));
       }
-      return new Union(tys);
+      return makeUnion(tys);
     }
     throw new Error(`unknown type for shift ${this}`);
   }
@@ -93,7 +101,7 @@ export abstract class Type {
       for (const ty of this.types) {
         tys.add(ty.subst(index, val, cutoff));
       }
-      return new Union(tys);
+      return makeUnion(tys);
     }
     console.log('Error', this);
     throw new Error(`unknown type for subst ${this}`);
@@ -104,31 +112,32 @@ export abstract class Type {
   }
 
   eval(depth: Depth): Type {
-    if (this.evaluated) {
+    if (this.evaluated === null) {
+      console.log(depth, '>>', this.toStringImpl());
+      const res = this.evalImpl(depth+`  `);
+      res.evaluated = res; // close the 'loop'
+      this.evaluated = res; // store the value in the cache
+      console.log(depth, '<<', this.toStringImpl(), '=>', this.evaluated.toStringImpl());
+    } else {
       console.log(depth, '..', this.toStringImpl(), '=>', this.evaluated.toStringImpl());
-      return this.evaluated; // TODO: Clone?
     }
-    console.log(depth, '>>', this.toStringImpl());
-    const res = this.evalImpl(depth+`  `);
-    res.evaluated = res;
-    console.log(depth, '<<', this.toStringImpl(), '=>', res.toStringImpl());
-    return res;
+    return this.evaluated;
   }
 
   evalImpl(depth: Depth): Type {
     if (this instanceof App) {
-      const inner = this.inner; // .eval(depth);
-      const argument = this.argument; // .eval(depth);
+      const inner = this.inner.eval(depth);
+      const argument = this.argument.eval(depth);
       if (inner instanceof Func && !(argument instanceof Var)) {
-        if (inner.argument.canAssignFromImpl(argument, depth)) {
+        if (inner.argument.canAssignFrom(argument, depth)) {
           return inner.result.subst(0, argument.shift(1), depth).shift(-1).eval(depth);
         } else {
-          return new Union(new Set());
+          return new Never();
         }
       } else if (inner instanceof Fallback && !(argument instanceof Var)) {
         // Propagate the application inside the fallback
-        const ty = new App(inner.ty, this.argument); // .eval(depth);
-        const def = new App(inner.def, this.argument); // .eval(depth);
+        const ty = new App(inner.ty, this.argument).eval(depth);
+        const def = new App(inner.def, this.argument).eval(depth);
         return new Fallback(ty, def).eval(depth);
       }
       return new App(inner, argument);
@@ -185,10 +194,8 @@ export abstract class Type {
       }
       if (tys.size === 1) {
         return [...tys][0];
-      } else if (tys.size === 0) {
-        return new Never();
       }
-      return new Union(tys);
+      return makeUnion(tys);
     }
     return this;
   }
@@ -226,14 +233,11 @@ export abstract class Type {
     return this.canAssignFrom(other, depth) && other.canAssignFrom(this, depth);
   }
 
-  toString(_depth: string=startDepth): string {
-    // if (this.isAny(depth)) {
-      // return 'Any';
-    // }
-    // if (this.isNever(depth)) {
-      // return 'Never';
-    // }
-    return this.toStringImpl();
+  toString(): string {
+    if (this.stringified === null) {
+      this.stringified = this.toStringImpl();
+    }
+    return this.stringified
   }
 }
 

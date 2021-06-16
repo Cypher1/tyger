@@ -144,8 +144,8 @@ describe('type tests', () => {
         assert.equal(dropFAppd.evalForTest().toString(), 'a->a');
         assert.isTrue(idA.equals(dropFAppd), '(1) applying an argument produces the inner');
         assert.isTrue(dropFAppd.equals(idA), '(2) applying an argument produces the inner');
-        assert.equal(dropFMissAppd.toString(), 'Never', 'applying a non-matching argument produces never');
         assert.isTrue(dropFMissAppd.equals(never()), 'applying a non-matching argument produces never');
+        assert.equal(dropFMissAppd.evalForTest().toString(), 'Never', 'applying a non-matching argument produces never');
         assert.isFalse(dropFAppd.isNever(), 'evaling a valid type is not never');
         assert.isTrue(dropFMissAppd.isNever(), 'evaling an invalid type is never');
       });

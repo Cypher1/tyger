@@ -1,4 +1,4 @@
-import {Any, Type, Refined, Fallback, Never, Var, Intersection, Union, Product, Named, Func, App} from './type.js';
+import {Any, Type, Refined, Fallback, Never, Var, Intersection, makeUnion, Product, Named, Func, App} from './type.js';
 
 export function withArgs(inner: Type, ...types: Type[]): Type {
   let curr = inner;
@@ -93,7 +93,7 @@ export function intersection(...types: Type[]): Type {
 }
 
 export function union(...types: Type[]): Type {
-  return new Union(new Set(types));
+  return makeUnion(new Set(types));
 }
 
 export function product(...types: Type[]): Type {
