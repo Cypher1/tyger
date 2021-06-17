@@ -294,7 +294,7 @@ export class Fallback extends Type {
   }
 
   toStringImpl(): string {
-    return `${this.ty}||${this.def}`;
+    return `(${this.ty}?:${this.def})`;
   }
 
   canAssignFromImpl(other: Type, depth: Depth): boolean {
@@ -509,7 +509,7 @@ export class Var extends Type {
   }
 
   toStringImpl(): string {
-    return `$${this.index}${this.name ? `#${this.name}` : ``}`;
+    return `${this.name || ''}#${this.index}`;
   }
 
   canAssignFromImpl(other: Type, _depth: Depth): boolean {

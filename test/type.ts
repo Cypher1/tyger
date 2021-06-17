@@ -169,9 +169,9 @@ describe('type tests', () => {
         const t = churchT();
         const left = named('left', any());
         const right = named('right', any());
-        assert.equal(t.toStringImpl(), 'Any->Any->$1#t');
+        assert.equal(t.toStringImpl(), 'Any->Any->t#1');
         const ifLeft = app(app(t, left), right);
-        assert.equal(ifLeft.toStringImpl(), '((Any->Any->$1#t)(left))(right)');
+        assert.equal(ifLeft.toStringImpl(), '((Any->Any->t#1)(left))(right)');
         assert.equal(ifLeft.evalForTest().toStringImpl(), 'left');
         assert.isTrue(ifLeft.canAssignFrom(left));
         assert.isFalse(ifLeft.canAssignFrom(right));
@@ -180,9 +180,9 @@ describe('type tests', () => {
         const f = churchF();
         const left = named('left', any());
         const right = named('right', any());
-        assert.equal(f.toString(), 'Any->Any->$0#f');
+        assert.equal(f.toString(), 'Any->Any->f#0');
         const ifRight = app(app(f, left), right);
-        assert.equal(ifRight.toString(), '((Any->Any->$0#f)(left))(right)');
+        assert.equal(ifRight.toString(), '((Any->Any->f#0)(left))(right)');
         assert.equal(ifRight.evalForTest().toString(), 'right');
         assert.isTrue(ifRight.canAssignFrom(right));
         assert.isFalse(ifRight.canAssignFrom(left));
@@ -220,7 +220,7 @@ describe('type tests', () => {
             const orAB = applyAll(or, churchBool(a), churchBool(b), left, right).evalForTest();
             const expectedB = a || b;
             const expected = expectedB ? left : right;
-            assert.equal(orAB.toString(), expected.toString(), `${a} || ${b} -> ${expectedB}`);
+            assert.equal(orAB.toString(), expected.toString(), `${a} ?: ${b} -> ${expectedB}`);
           }
         }
       });
@@ -228,38 +228,38 @@ describe('type tests', () => {
     describe('church nats as types', () => {
       it('0', () => {
         const n = churchNat(0);
-        assert.equal(n.toString(), 'Any->Any->$0#x');
+        assert.equal(n.toString(), 'Any->Any->x#0');
         const startV = named('start', any());
         const f = named('fun', any());
         const fNTimes = applyAll(n, f, startV);
-        assert.equal(fNTimes.toString(), '((Any->Any->$0#x)(fun))(start)');
+        assert.equal(fNTimes.toString(), '((Any->Any->x#0)(fun))(start)');
         assert.equal(fNTimes.evalForTest().toString(), 'start');
       });
       it('1', () => {
         const n = churchNat(1);
-        assert.equal(n.toString(), 'Any->Any->($1#f)($0#x)');
+        assert.equal(n.toString(), 'Any->Any->(f#1)(x#0)');
         const startV = named('start', any());
         const f = named('fun', any());
         const fNTimes = applyAll(n, f, startV);
-        assert.equal(fNTimes.toString(), '((Any->Any->($1#f)($0#x))(fun))(start)');
+        assert.equal(fNTimes.toString(), '((Any->Any->(f#1)(x#0))(fun))(start)');
         assert.equal(fNTimes.evalForTest().toString(), '(fun)(start)');
       });
       it('2', () => {
         const n = churchNat(2);
-        assert.equal(n.toString(), 'Any->Any->($1#f)(($1#f)($0#x))');
+        assert.equal(n.toString(), 'Any->Any->(f#1)((f#1)(x#0))');
         const startV = named('start', any());
         const f = named('fun', any());
         const fNTimes = applyAll(n, f, startV);
-        assert.equal(fNTimes.toString(), '((Any->Any->($1#f)(($1#f)($0#x)))(fun))(start)');
+        assert.equal(fNTimes.toString(), '((Any->Any->(f#1)((f#1)(x#0)))(fun))(start)');
         assert.equal(fNTimes.evalForTest().toString(), '(fun)((fun)(start))');
       });
       it('3', () => {
         const n = churchNat(3);
-        assert.equal(n.toString(), 'Any->Any->($1#f)(($1#f)(($1#f)($0#x)))');
+        assert.equal(n.toString(), 'Any->Any->(f#1)((f#1)((f#1)(x#0)))');
         const startV = named('start', any());
         const f = named('fun', any());
         const fNTimes = applyAll(n, f, startV);
-        assert.equal(fNTimes.toString(), '((Any->Any->($1#f)(($1#f)(($1#f)($0#x))))(fun))(start)');
+        assert.equal(fNTimes.toString(), '((Any->Any->(f#1)((f#1)((f#1)(x#0))))(fun))(start)');
         assert.equal(fNTimes.evalForTest().toString(), '(fun)((fun)((fun)(start)))');
       });
       it('plus', () => {
@@ -276,7 +276,7 @@ describe('type tests', () => {
     });
     describe('fallback', () => {
       it('fallback toString', () => {
-        assert.equal(fallback().toString(), 'Any->Any->$1#ty||$0#def');
+        assert.equal(fallback().toString(), 'Any->Any->(ty#1?:def#0)');
       });
       it('fallback of never is default', () => {
         const three = churchNat(3);
@@ -302,7 +302,7 @@ describe('type tests', () => {
     });
     describe('requireType', () => {
       it('requireType toString', () => {
-        assert.equal(requireType().toString(), 'Any->Any->($1#t->$0#v)($0#v)');
+        assert.equal(requireType().toString(), 'Any->Any->(t#1->v#0)(v#0)');
       });
       it('requireType always true for non never types', () => {
         const three = churchNat(3);
@@ -317,7 +317,7 @@ describe('type tests', () => {
     });
     describe('isType', () => {
       it('isType toString', () => {
-        assert.equal(isType().toString(), 'Any->Any->Any->Any->($1#ty->$0#v)($0#v)');
+        assert.equal(isType().toString(), 'Any->Any->Any->Any->(ty#1->v#0)(v#0)');
       });
       it('isType always true for non never types', () => {
         const three = churchNat(3);
